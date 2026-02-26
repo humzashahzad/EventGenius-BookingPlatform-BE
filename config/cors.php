@@ -28,7 +28,7 @@ return [
 
     // Allow any LAN origin (same machine or other device on WiFi): http(s)://<ip>:5173
     'allowed_origins_patterns' => [
-        '#^https?://(localhost|127\.0\.0\.1|10\.\d+\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+):(5173|5174|3000|8080)$#',
+        '#^https?://(localhost|127\.0\.0\.1|10\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+):(4000|5173|5174|3000|8080)$#',
     ],
 
     'allowed_headers' => ['*'],

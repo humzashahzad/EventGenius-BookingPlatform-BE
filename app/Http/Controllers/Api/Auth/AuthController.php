@@ -42,8 +42,7 @@ class AuthController extends Controller
                 'message' => 'Registration successful.',
             ], 201)
             ->header('X-Auth-Token', $tokenData['token'])
-            ->header('X-Token-Expires-In', (string) $tokenData['expires_in'])
-            ->header('Access-Control-Expose-Headers', 'X-Auth-Token, X-Token-Expires-In');
+            ->header('X-Token-Expires-In', (string) $tokenData['expires_in']);
     }
 
     // ── Login ─────────────────────────────────────────────────────────────────
@@ -75,12 +74,12 @@ class AuthController extends Controller
         return response()
             ->json([
                 'success' => true,
-                'data'    => ['user' => $user],
+                'data'    => [
+                    'user'  => $user,
+                    'token' => $tokenData['token'],
+                ],
                 'message' => 'Login successful.',
-            ])
-            ->header('X-Auth-Token', $tokenData['token'])
-            ->header('X-Token-Expires-In', (string) $tokenData['expires_in'])
-            ->header('Access-Control-Expose-Headers', 'X-Auth-Token, X-Token-Expires-In');
+            ]);
     }
 
     // ── Me ────────────────────────────────────────────────────────────────────

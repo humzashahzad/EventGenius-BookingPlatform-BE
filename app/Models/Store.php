@@ -70,4 +70,9 @@ class Store extends Model implements TenantWithDatabase
     {
         return $this->hasMany(Booking::class);
     }
+
+    public function landingPage()
+    {
+        return $this->hasOne(StoreLandingPage::class);
+    }
 }

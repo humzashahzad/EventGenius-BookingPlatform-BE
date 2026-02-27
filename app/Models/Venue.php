@@ -14,7 +14,7 @@ class Venue extends Model
         'store_id', 'name', 'slug', 'description', 'thumbnail',
         'address', 'city', 'state', 'country', 'latitude', 'longitude',
         'capacity_min', 'capacity_max', 'area_sqft', 'floors',
-        'price_per_hour', 'price_per_day', 'price_per_event',
+        'price_per_hour', 'price_per_day', 'price_per_event', 'price_per_head',
         'pricing_type', 'dynamic_pricing', 'event_types',
         'status', 'is_featured', 'avg_rating', 'total_reviews', 'total_bookings',
     ];
@@ -26,6 +26,7 @@ class Venue extends Model
         'price_per_hour' => 'float',
         'price_per_day' => 'float',
         'price_per_event' => 'float',
+        'price_per_head' => 'float',
         'avg_rating' => 'float',
         'latitude' => 'float',
         'longitude' => 'float',
@@ -58,11 +59,6 @@ class Venue extends Model
 
     public function getPriceAttribute()
     {
-        return match ($this->pricing_type) {
-            'per_hour'  => $this->price_per_hour,
-            'per_day'   => $this->price_per_day,
-            'per_event' => $this->price_per_event,
-            default     => $this->price_per_hour ?? $this->price_per_day ?? $this->price_per_event,
-        };
+        return $this->price_per_head ?? $this->price_per_hour ?? $this->price_per_day ?? $this->price_per_event;
     }
 }

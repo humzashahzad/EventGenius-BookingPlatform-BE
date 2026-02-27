@@ -37,6 +37,9 @@ class BookingController extends Controller
             'end_time'             => 'required|date_format:H:i|after:start_time',
             'expected_guests'      => 'required|integer|min:1',
             'special_requirements' => 'nullable|string',
+            'latitude'             => 'nullable|numeric|between:-90,90',
+            'longitude'            => 'nullable|numeric|between:-180,180',
+            'geo_accuracy'         => 'nullable|numeric|min:0',
         ]);
 
         $venue = Venue::where('status', 'active')->findOrFail($validated['venue_id']);
@@ -59,12 +62,7 @@ class BookingController extends Controller
         $start    = \Carbon\Carbon::createFromFormat('H:i', $validated['start_time']);
         $end      = \Carbon\Carbon::createFromFormat('H:i', $validated['end_time']);
         $hours    = (int) $start->diffInHours($end);
-        $basePrice = match ($venue->pricing_type) {
-            'per_hour'  => ($venue->price_per_hour ?? 0) * $hours,
-            'per_day'   => $venue->price_per_day ?? 0,
-            'per_event' => $venue->price_per_event ?? 0,
-            default     => 0,
-        };
+        $basePrice = ($venue->price_per_head ?? 0) * $validated['expected_guests'];
         $taxAmount   = round($basePrice * 0.05, 2);
         $totalAmount = round($basePrice + $taxAmount, 2);
 

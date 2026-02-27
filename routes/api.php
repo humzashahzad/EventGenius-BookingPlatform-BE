@@ -9,10 +9,13 @@ use App\Http\Controllers\Api\Admin\BookingController as AdminBookingController;
 use App\Http\Controllers\Api\Admin\DashboardController as AdminDashboardController;
 use App\Http\Controllers\Api\Admin\SessionController as AdminSessionController;
 use App\Http\Controllers\Api\Admin\ProfileController as AdminProfileController;
+use App\Http\Controllers\Api\Admin\CategoryController as AdminCategoryController;
+use App\Http\Controllers\Api\Admin\LocationController as AdminLocationController;
 use App\Http\Controllers\Api\Store\VenueController as StoreVenueController;
 use App\Http\Controllers\Api\Store\BookingController as StoreBookingController;
 use App\Http\Controllers\Api\Store\DashboardController as StoreDashboardController;
 use App\Http\Controllers\Api\Store\ProfileController as StoreProfileController;
+use App\Http\Controllers\Api\Store\LandingController as StoreLandingController;
 use App\Http\Controllers\Api\Client\VenueController as ClientVenueController;
 use App\Http\Controllers\Api\Client\BookingController as ClientBookingController;
 use App\Http\Controllers\Api\Client\DashboardController as ClientDashboardController;
@@ -37,6 +40,12 @@ Route::prefix('auth')->group(function () {
         Route::post('/logout-all', [AuthController::class, 'logoutAll']);
     });
 });
+
+// ─── Public Categories ───────────────────────────────────────────────────────
+Route::get('/categories', [AdminCategoryController::class, 'publicIndex']);
+
+// ─── Public Locations (allowed tree for dropdowns) ──────────────────────────
+Route::get('/locations/allowed', [AdminLocationController::class, 'allowedTree']);
 
 // ─── Public Venue Browsing ────────────────────────────────────────────────────
 Route::prefix('venues')->group(function () {
@@ -84,6 +93,12 @@ Route::prefix('store')
         // Profile
         Route::get('/profile', [StoreProfileController::class, 'show']);
         Route::put('/profile', [StoreProfileController::class, 'update']);
+
+        // Landing Page
+        Route::get('/landing', [StoreLandingController::class, 'show']);
+        Route::put('/landing', [StoreLandingController::class, 'upsert']);
+        Route::post('/landing/hero', [StoreLandingController::class, 'uploadHero']);
+        Route::post('/landing/gallery', [StoreLandingController::class, 'uploadGallery']);
     });
 
 // ─── Admin Routes ─────────────────────────────────────────────────────────────
@@ -116,6 +131,14 @@ Route::prefix('admin')
         // Bookings oversight
         Route::get('/bookings', [AdminBookingController::class, 'index']);
         Route::get('/bookings/{id}', [AdminBookingController::class, 'show']);
+
+        // Categories
+        Route::apiResource('categories', AdminCategoryController::class);
+
+        // Locations (geo-fencing)
+        Route::get('/locations/tree', [AdminLocationController::class, 'tree']);
+        Route::apiResource('locations', AdminLocationController::class);
+        Route::patch('/locations/{id}/toggle', [AdminLocationController::class, 'toggle']);
 
         // Profile (name, email, password; avatar via global /profile/avatar)
         Route::get('/profile', [AdminProfileController::class, 'show']);

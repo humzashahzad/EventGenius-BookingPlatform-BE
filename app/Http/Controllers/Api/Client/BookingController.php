@@ -56,6 +56,19 @@ class BookingController extends Controller
             ], 422);
         }
 
+        // Check venue operating hours
+        $opStart = $venue->operating_start ?? '00:00';
+        $opEnd   = $venue->operating_end ?? '23:59';
+
+        // Normalize 23:59 to 24:00 for comparison if needed, 
+        // but it's easier to just compare strings if they are H:i
+        if ($validated['start_time'] < $opStart || $validated['end_time'] > $opEnd) {
+            return response()->json([
+                'success' => false,
+                'message' => "This venue is only available between {$opStart} and {$opEnd}.",
+            ], 422);
+        }
+
         $start    = \Carbon\Carbon::createFromFormat('H:i', $validated['start_time']);
         $end      = \Carbon\Carbon::createFromFormat('H:i', $validated['end_time']);
         $hours    = (int) $start->diffInHours($end);

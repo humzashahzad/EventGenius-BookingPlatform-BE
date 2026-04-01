@@ -16,6 +16,7 @@ class Venue extends Model
         'capacity_min', 'capacity_max', 'area_sqft', 'floors',
         'price_per_hour', 'price_per_day', 'price_per_event', 'price_per_head',
         'pricing_type', 'dynamic_pricing', 'event_types',
+        'operating_start', 'operating_end',
         'status', 'is_featured', 'avg_rating', 'total_reviews', 'total_bookings',
     ];
 

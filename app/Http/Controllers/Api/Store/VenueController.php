@@ -60,6 +60,11 @@ class VenueController extends Controller
             'dynamic_pricing' => 'sometimes|boolean',
             'event_types'     => 'nullable|array',
             'event_types.*'   => 'string',
+            'operating_start' => 'nullable|date_format:H:i',
+            'operating_end'   => 'nullable|date_format:H:i',
+            'latitude'        => 'nullable|numeric',
+            'longitude'       => 'nullable|numeric',
+            'country'         => 'sometimes|string|max:255',
         ]);
 
         $validated['pricing_type'] = 'per_head';
@@ -111,8 +116,13 @@ class VenueController extends Controller
             'price_per_event' => 'nullable|numeric|min:0',
             'pricing_type'    => 'nullable|in:per_hour,per_day,per_event,per_head,negotiable',
             'dynamic_pricing'=> 'sometimes|boolean',
-            'event_types'    => 'nullable|array',
-            'status'         => 'sometimes|in:active,inactive',
+            'event_types'     => 'nullable|array',
+            'status'          => 'sometimes|in:active,inactive',
+            'operating_start' => 'nullable|date_format:H:i',
+            'operating_end'   => 'nullable|date_format:H:i',
+            'latitude'        => 'nullable|numeric',
+            'longitude'       => 'nullable|numeric',
+            'country'         => 'sometimes|string|max:255',
         ]);
 
         if (

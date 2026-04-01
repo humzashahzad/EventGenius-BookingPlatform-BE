@@ -19,17 +19,9 @@ return [
 
     'allowed_methods' => ['*'],
 
-    'allowed_origins' => [
-        'http://localhost:5173',
-        'http://127.0.0.1:5173',
-        'http://10.189.174.153:5173',
-        'https://10.189.174.153:5173',
-    ],
+    'allowed_origins' => ['*'],
 
-    // Allow any LAN origin (same machine or other device on WiFi): http(s)://<ip>:5173
-    'allowed_origins_patterns' => [
-        '#^https?://(localhost|127\.0\.0\.1|10\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+):(4000|5173|5174|3000|8080)$#',
-    ],
+    'allowed_origins_patterns' => [],
 
     'allowed_headers' => ['*'],
 
@@ -37,6 +29,8 @@ return [
 
     'max_age' => 86400,
 
-    'supports_credentials' => true,
+    // JWT auth uses Authorization headers, not cookies.
+    // Keep credentials disabled so wildcard origins remain browser-safe.
+    'supports_credentials' => false,
 
 ];

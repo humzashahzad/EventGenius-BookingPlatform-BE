@@ -14,7 +14,6 @@ class Booking extends Model
         'booking_number', 'venue_id', 'client_id', 'store_id',
         'event_name', 'event_type', 'special_requirements', 'expected_guests',
         'event_date', 'start_time', 'end_time', 'duration_hours',
-        'latitude', 'longitude', 'geo_accuracy',
         'base_price', 'amenities_price', 'discount_amount', 'tax_amount', 'total_amount',
         'status', 'cancellation_reason', 'rejection_reason', 'confirmed_at', 'cancelled_at',
     ];
@@ -28,9 +27,6 @@ class Booking extends Model
         'discount_amount' => 'float',
         'tax_amount' => 'float',
         'total_amount' => 'float',
-        'latitude' => 'float',
-        'longitude' => 'float',
-        'geo_accuracy' => 'float',
     ];
 
     public function venue()

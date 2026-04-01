@@ -10,7 +10,6 @@ use App\Http\Controllers\Api\Admin\DashboardController as AdminDashboardControll
 use App\Http\Controllers\Api\Admin\SessionController as AdminSessionController;
 use App\Http\Controllers\Api\Admin\ProfileController as AdminProfileController;
 use App\Http\Controllers\Api\Admin\CategoryController as AdminCategoryController;
-use App\Http\Controllers\Api\Admin\LocationController as AdminLocationController;
 use App\Http\Controllers\Api\Store\VenueController as StoreVenueController;
 use App\Http\Controllers\Api\Store\BookingController as StoreBookingController;
 use App\Http\Controllers\Api\Store\DashboardController as StoreDashboardController;
@@ -43,9 +42,6 @@ Route::prefix('auth')->group(function () {
 
 // ─── Public Categories ───────────────────────────────────────────────────────
 Route::get('/categories', [AdminCategoryController::class, 'publicIndex']);
-
-// ─── Public Locations (allowed tree for dropdowns) ──────────────────────────
-Route::get('/locations/allowed', [AdminLocationController::class, 'allowedTree']);
 
 // ─── Public Venue Browsing ────────────────────────────────────────────────────
 Route::prefix('venues')->group(function () {
@@ -135,11 +131,6 @@ Route::prefix('admin')
         // Categories
         Route::apiResource('categories', AdminCategoryController::class);
 
-        // Locations (geo-fencing)
-        Route::get('/locations/tree', [AdminLocationController::class, 'tree']);
-        Route::apiResource('locations', AdminLocationController::class);
-        Route::patch('/locations/{id}/toggle', [AdminLocationController::class, 'toggle']);
-
         // Profile (name, email, password; avatar via global /profile/avatar)
         Route::get('/profile', [AdminProfileController::class, 'show']);
         Route::put('/profile', [AdminProfileController::class, 'update']);
@@ -155,9 +146,6 @@ Route::middleware('jwt')->group(function () {
     Route::post('/notifications/read-all',  [NotificationController::class, 'markAllRead']);
     Route::delete('/notifications/{id}',    [NotificationController::class, 'destroy']);
 });
-
-// SSE stream (no jwt middleware — auth via query param token)
-Route::get('/notifications/stream', [NotificationController::class, 'stream']);
 
 // ─── Profile Management (all authenticated users) ───────────────────────────
 use App\Http\Controllers\Api\ProfileController;
@@ -225,12 +213,7 @@ Route::middleware('jwt')->group(function () {
     // Reactions
     Route::post('/nexus/messages/{message}/reactions', [NexusChatController::class, 'toggleReaction']);
 
-    // Typing indicator (HTTP fallback — primary is via Echo client events)
-    Route::post('/nexus/chats/{chat}/typing', [NexusChatController::class, 'typing']);
-
     // Search users to start a chat
     Route::get('/nexus/users/search', [NexusChatController::class, 'searchUsers']);
-
-    // Online presence
-    Route::post('/nexus/heartbeat', [NexusChatController::class, 'heartbeat']);
+    Route::get('/nexus/eligible-contacts', [NexusChatController::class, 'eligibleContacts']);
 });

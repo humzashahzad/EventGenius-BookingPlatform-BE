@@ -115,6 +115,14 @@ class VenueController extends Controller
             'status'         => 'sometimes|in:active,inactive',
         ]);
 
+        if (
+            array_key_exists('price_per_head', $validated)
+            || array_key_exists('pricing_type', $validated)
+            || $venue->price_per_head !== null
+        ) {
+            $validated['pricing_type'] = 'per_head';
+        }
+
         $venue->update($validated);
         $venue->load(['images', 'amenities']);
 

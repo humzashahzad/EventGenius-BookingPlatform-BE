@@ -3,12 +3,15 @@
 namespace App\Http\Controllers\Api\Auth;
 
 use App\Http\Controllers\Controller;
+use App\Models\Store;
 use App\Models\User;
 use App\Services\JwtService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Password;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
 class AuthController extends Controller
@@ -20,18 +23,36 @@ class AuthController extends Controller
     public function register(Request $request): JsonResponse
     {
         $request->validate([
-            'name'     => ['required', 'string', 'max:255'],
-            'email'    => ['required', 'string', 'email', 'max:255', 'unique:users'],
-            'password' => ['required', 'string', 'min:8', 'confirmed'],
-            'role'     => ['sometimes', 'in:client,store_owner'],
+            'name'       => ['required', 'string', 'max:255'],
+            'email'      => ['required', 'string', 'email', 'max:255', 'unique:users'],
+            'password'   => ['required', 'string', 'min:8', 'confirmed'],
+            'role'       => ['sometimes', 'in:client,store_owner'],
+            'store_name' => ['required_if:role,store_owner', 'nullable', 'string', 'max:255'],
         ]);
 
-        $user = User::create([
-            'name'     => $request->input('name'),
-            'email'    => $request->input('email'),
-            'password' => Hash::make($request->input('password')),
-            'role'     => $request->input('role', 'client'),
-        ]);
+        $role = $request->input('role', 'client');
+
+        $user = DB::transaction(function () use ($request, $role) {
+            $user = User::create([
+                'name'     => $request->input('name'),
+                'email'    => $request->input('email'),
+                'password' => Hash::make($request->input('password')),
+                'role'     => $role,
+            ]);
+
+            if ($role === 'store_owner') {
+                $storeName = (string) $request->input('store_name', $user->name);
+                Store::create([
+                    'user_id' => $user->id,
+                    'name'    => $storeName,
+                    'slug'    => Str::slug($storeName) . '-' . Str::lower(Str::random(6)),
+                    'email'   => $user->email,
+                    'status'  => 'pending',
+                ]);
+            }
+
+            return $user;
+        });
 
         $tokenData = $this->jwt->createToken($user, $request->ip(), $request->userAgent());
 

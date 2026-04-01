@@ -37,9 +37,6 @@ class BookingController extends Controller
             'end_time'             => 'required|date_format:H:i|after:start_time',
             'expected_guests'      => 'required|integer|min:1',
             'special_requirements' => 'nullable|string',
-            'latitude'             => 'nullable|numeric|between:-90,90',
-            'longitude'            => 'nullable|numeric|between:-180,180',
-            'geo_accuracy'         => 'nullable|numeric|min:0',
         ]);
 
         $venue = Venue::where('status', 'active')->findOrFail($validated['venue_id']);

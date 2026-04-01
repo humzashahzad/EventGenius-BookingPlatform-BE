@@ -7,21 +7,24 @@ use App\Events\Chat\MessageReacted;
 use App\Events\Chat\MessagesRead;
 use App\Events\Chat\MessageSent;
 use App\Events\Chat\MessageUpdated;
-use App\Events\Chat\UserTyping;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\Chat\ChatResource;
 use App\Http\Resources\Chat\MessageResource;
+use App\Models\Booking;
 use App\Models\Chat;
 use App\Models\ChatParticipant;
 use App\Models\Message;
 use App\Models\MessageReaction;
 use App\Models\MessageRead;
 use App\Models\User;
+use App\Services\NotificationService;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Throwable;
 
 class NexusChatController extends Controller
 {
@@ -107,8 +110,13 @@ class NexusChatController extends Controller
 
             $chat->load(['chatParticipants.user', 'activeParticipants', 'latestMessage.sender']);
 
+            // Invalidate private chat lookup cache
+            $min = min($user->id, $otherUserId);
+            $max = max($user->id, $otherUserId);
+            Cache::forget("chat:private:{$min}:{$max}");
+
             // Notify the other user about the new chat
-            broadcast(new ChatNotification($otherUserId, 'chat_created', [
+            $this->broadcastSafely($request, new ChatNotification($otherUserId, 'chat_created', [
                 'chat' => (new ChatResource($chat))->resolve(),
             ]));
 
@@ -147,7 +155,7 @@ class NexusChatController extends Controller
         // Notify all other participants
         foreach ($userIds as $uid) {
             if ($uid !== $user->id) {
-                broadcast(new ChatNotification($uid, 'chat_created', [
+                $this->broadcastSafely($request, new ChatNotification($uid, 'chat_created', [
                     'chat' => (new ChatResource($chat))->resolve(),
                 ]));
             }
@@ -293,22 +301,23 @@ class NexusChatController extends Controller
                 'message_id' => $message->id,
                 'user_id'    => $pid,
             ]);
+            // Invalidate cached unread count for this participant
+            Cache::forget("chat:unread:{$chat->id}:{$pid}");
         }
 
         // Load relationships for broadcasting
         $message->load(['sender', 'replyTo.sender', 'reactions.user', 'reads', 'chat.activeParticipants']);
 
-        // Broadcast to the chat channel
-        broadcast(new MessageSent($message))->toOthers();
+        // Broadcast to the chat channel (safe no-op when realtime backend is unavailable)
+        $this->broadcastSafely($request, new MessageSent($message), true);
 
         // Send notification to each participant's private channel
         foreach ($participantIds as $pid) {
-            $otherUser = $chat->otherUser($pid);
             $chatName = $chat->type === 'group'
                 ? $chat->name
                 : $user->name;
 
-            broadcast(new ChatNotification($pid, 'new_message', [
+            $this->broadcastSafely($request, new ChatNotification($pid, 'new_message', [
                 'chat_id'     => $chat->id,
                 'chat_name'   => $chatName,
                 'message_id'  => $message->id,
@@ -320,6 +329,23 @@ class NexusChatController extends Controller
                 'created_at'  => $message->created_at->toISOString(),
             ]));
         }
+
+        NotificationService::send(
+            $participantIds->all(),
+            'chat_message',
+            "{$user->name} sent you a message",
+            Str::limit($message->body ?? '[Attachment]', 80),
+            [
+                'conversation_id' => $chat->id,
+                'chat_id'         => $chat->id,
+                'message_id'      => $message->id,
+                'sender_id'       => $user->id,
+                'sender_name'     => $user->name,
+                'sender_avatar'   => $user->avatar,
+                'chat_name'       => $chat->type === 'group' ? $chat->name : $user->name,
+                'type'            => $message->type,
+            ],
+        );
 
         return response()->json([
             'success' => true,
@@ -359,7 +385,7 @@ class NexusChatController extends Controller
 
         $message->load(['sender', 'replyTo.sender', 'reactions.user', 'reads', 'chat.activeParticipants']);
 
-        broadcast(new MessageUpdated($message, 'edited'))->toOthers();
+        $this->broadcastSafely($request, new MessageUpdated($message, 'edited'), true);
 
         return response()->json([
             'success' => true,
@@ -389,7 +415,7 @@ class NexusChatController extends Controller
 
         $message->load(['sender', 'replyTo.sender', 'reactions.user', 'reads', 'chat.activeParticipants']);
 
-        broadcast(new MessageUpdated($message, 'deleted'))->toOthers();
+        $this->broadcastSafely($request, new MessageUpdated($message, 'deleted'), true);
 
         return response()->json([
             'success' => true,
@@ -429,14 +455,17 @@ class NexusChatController extends Controller
                     'delivered_at' => DB::raw("COALESCE(delivered_at, '{$now}')"),
                 ]);
 
+            // Invalidate cached unread count
+            Cache::forget("chat:unread:{$chat->id}:{$user->id}");
+
             // Broadcast read receipt
-            broadcast(new MessagesRead(
+            $this->broadcastSafely($request, new MessagesRead(
                 $chat->id,
                 $user->id,
                 $user->name,
                 $messageIds,
                 $now->toISOString(),
-            ))->toOthers();
+            ), true);
         }
 
         return response()->json([
@@ -476,14 +505,14 @@ class NexusChatController extends Controller
             $action = 'added';
         }
 
-        broadcast(new MessageReacted(
+        $this->broadcastSafely($request, new MessageReacted(
             $chat->id,
             $message->id,
             $user->id,
             $user->name,
             $request->emoji,
             $action,
-        ))->toOthers();
+        ), true);
 
         return response()->json([
             'success' => true,
@@ -491,57 +520,55 @@ class NexusChatController extends Controller
         ]);
     }
 
-    // ─── Typing Indicator ────────────────────────────────────────────────
-
-    public function typing(Request $request, Chat $chat): JsonResponse
-    {
-        $user = $request->user();
-        $this->authorizeParticipant($user, $chat);
-
-        $request->validate([
-            'is_typing' => 'required|boolean',
-        ]);
-
-        broadcast(new UserTyping(
-            $chat->id,
-            $user->id,
-            $user->name,
-            $request->is_typing,
-        ))->toOthers();
-
-        return response()->json(['success' => true]);
-    }
-
     // ─── Search Users ────────────────────────────────────────────────────
 
     public function searchUsers(Request $request): JsonResponse
     {
         $request->validate([
-            'q' => 'required|string|min:1|max:100',
+            'q'     => 'nullable|string|max:100',
+            'role'  => 'nullable|in:admin,store_owner,client',
+            'limit' => 'nullable|integer|min:1|max:50',
         ]);
 
         $user = $request->user();
-        $query = $request->q;
+        $search = trim((string) $request->input('q', ''));
+        $role = $request->input('role');
+        $limit = (int) $request->input('limit', 20);
 
-        $users = User::where('id', '!=', $user->id)
+        $query = User::query()
+            ->where('id', '!=', $user->id)
             ->where('is_active', true)
-            ->where(function ($q) use ($query) {
-                $q->where('name', 'LIKE', "%{$query}%")
-                  ->orWhere('email', 'LIKE', "%{$query}%");
-            })
-            ->select('id', 'name', 'email', 'avatar', 'role', 'last_seen_at')
-            ->limit(20)
-            ->get()
-            ->map(function ($u) {
-                return [
-                    'id'        => $u->id,
-                    'name'      => $u->name,
-                    'email'     => $u->email,
-                    'avatar'    => $u->avatar,
-                    'role'      => $u->role,
-                    'is_online' => $u->isOnline(),
-                ];
+            ->select('id', 'name', 'email', 'avatar', 'role', 'last_seen_at');
+
+        if ($role) {
+            $query->where('role', $role);
+        }
+
+        // Keep non-admin search scoped to support + role-allowed contacts.
+        if ($user->role !== 'admin') {
+            $allowedIds = $this->allowedContactIdsFor($user);
+            if (count($allowedIds) === 0) {
+                return response()->json([
+                    'success' => true,
+                    'data'    => [],
+                ]);
+            }
+            $query->whereIn('id', $allowedIds);
+        }
+
+        if ($search !== '') {
+            $query->where(function (Builder $sub) use ($search) {
+                $sub->where('name', 'LIKE', "%{$search}%")
+                    ->orWhere('email', 'LIKE', "%{$search}%");
             });
+        }
+
+        $users = $query
+            ->orderByRaw("CASE WHEN role = 'admin' THEN 0 ELSE 1 END")
+            ->orderBy('name')
+            ->limit($limit)
+            ->get()
+            ->map(fn (User $u) => $this->toChatUserPayload($u));
 
         return response()->json([
             'success' => true,
@@ -549,14 +576,67 @@ class NexusChatController extends Controller
         ]);
     }
 
-    // ─── Heartbeat (online presence) ─────────────────────────────────────
+    // ─── Eligible Contacts ────────────────────────────────────────────────
 
-    public function heartbeat(Request $request): JsonResponse
+    public function eligibleContacts(Request $request): JsonResponse
     {
         $user = $request->user();
-        $user->update(['last_seen_at' => now()]);
 
-        return response()->json(['success' => true]);
+        if ($user->role === 'admin') {
+            return response()->json([
+                'success' => true,
+                'data'    => [],
+            ]);
+        }
+
+        $contacts = Cache::remember("eligible_contacts:{$user->id}", 600, function () use ($user) {
+            $query = User::query()
+                ->where('id', '!=', $user->id)
+                ->where('is_active', true)
+                ->select('id', 'name', 'email', 'avatar', 'role', 'last_seen_at');
+
+            if ($user->role === 'store_owner') {
+                $storeId = $user->store?->id;
+                if (!$storeId) {
+                    return [];
+                }
+
+                $clientIds = Booking::where('store_id', $storeId)
+                    ->whereNotNull('client_id')
+                    ->distinct()
+                    ->pluck('client_id');
+
+                if ($clientIds->isEmpty()) {
+                    return [];
+                }
+
+                $query->where('role', 'client')->whereIn('id', $clientIds);
+            } else {
+                $storeIds = Booking::where('client_id', $user->id)
+                    ->whereNotNull('store_id')
+                    ->distinct()
+                    ->pluck('store_id');
+
+                if ($storeIds->isEmpty()) {
+                    return [];
+                }
+
+                $query->where('role', 'store_owner')
+                    ->whereHas('store', fn (Builder $q) => $q->whereIn('id', $storeIds));
+            }
+
+            return $query
+                ->orderBy('name')
+                ->limit(50)
+                ->get()
+                ->map(fn (User $u) => $this->toChatUserPayload($u))
+                ->all();
+        });
+
+        return response()->json([
+            'success' => true,
+            'data'    => $contacts,
+        ]);
     }
 
     // ─── Authorization Helper ────────────────────────────────────────────
@@ -566,5 +646,119 @@ class NexusChatController extends Controller
         if (!$chat->hasParticipant($user->id)) {
             abort(403, 'You are not a participant of this chat.');
         }
+    }
+
+    private function toChatUserPayload(User $user): array
+    {
+        return [
+            'id'        => $user->id,
+            'name'      => $user->name,
+            'email'     => $user->email,
+            'avatar'    => $user->avatar,
+            'role'      => $user->role,
+            'is_online' => $user->isOnline(),
+        ];
+    }
+
+    private function allowedContactIdsFor(User $user): array
+    {
+        return Cache::remember("allowed_contacts:{$user->id}", 600, function () use ($user) {
+            $supportIds = Cache::remember('users:admins:active', 900, function () {
+                return User::where('role', 'admin')
+                    ->where('is_active', true)
+                    ->pluck('id')
+                    ->all();
+            });
+
+            if ($user->role === 'store_owner') {
+                $storeId = $user->store?->id;
+                if (!$storeId) {
+                    return $supportIds;
+                }
+
+                $clientIds = Booking::where('store_id', $storeId)
+                    ->whereNotNull('client_id')
+                    ->distinct()
+                    ->pluck('client_id')
+                    ->all();
+
+                return array_values(array_unique(array_merge($supportIds, $clientIds)));
+            }
+
+            if ($user->role === 'client') {
+                $storeIds = Booking::where('client_id', $user->id)
+                    ->whereNotNull('store_id')
+                    ->distinct()
+                    ->pluck('store_id');
+
+                if ($storeIds->isEmpty()) {
+                    return $supportIds;
+                }
+
+                $storeOwnerIds = User::where('role', 'store_owner')
+                    ->where('is_active', true)
+                    ->whereHas('store', fn (Builder $q) => $q->whereIn('id', $storeIds))
+                    ->pluck('id')
+                    ->all();
+
+                return array_values(array_unique(array_merge($supportIds, $storeOwnerIds)));
+            }
+
+            return [];
+        });
+    }
+
+    private function broadcastSafely(Request $request, object $event, bool $toOthers = false): void
+    {
+        if (!$this->canBroadcast($request)) {
+            return;
+        }
+
+        try {
+            if ($toOthers && method_exists($event, 'dontBroadcastToCurrentUser')) {
+                $event->dontBroadcastToCurrentUser();
+            }
+            event($event);
+        } catch (Throwable $e) {
+            report($e);
+        }
+    }
+
+    /**
+     * Avoid broadcast deadlocks when API and Reverb are configured to the same host:port.
+     * In that case, synchronous broadcast calls can block the request for ~30s.
+     */
+    private function canBroadcast(Request $request): bool
+    {
+        if ((bool) env('NEXUS_FORCE_BROADCAST', false)) {
+            return true;
+        }
+
+        $connection = (string) config('broadcasting.default', 'null');
+        if ($connection === '' || in_array($connection, ['null', 'log'], true)) {
+            return false;
+        }
+
+        if (!in_array($connection, ['reverb', 'pusher'], true)) {
+            return true;
+        }
+
+        $host = (string) config("broadcasting.connections.{$connection}.options.host", '');
+        $port = (int) config("broadcasting.connections.{$connection}.options.port", 0);
+
+        if ($host === '' || $port <= 0) {
+            return true;
+        }
+
+        $normalizeHost = static function (string $value): string {
+            $v = strtolower(trim($value));
+            return in_array($v, ['127.0.0.1', '::1'], true) ? 'localhost' : $v;
+        };
+
+        $broadcastHost = $normalizeHost($host);
+        $requestHost = $normalizeHost((string) $request->getHost());
+        $requestPort = (int) ($request->getPort() ?: ($request->isSecure() ? 443 : 80));
+
+        return !($broadcastHost === $requestHost && $port === $requestPort);
     }
 }

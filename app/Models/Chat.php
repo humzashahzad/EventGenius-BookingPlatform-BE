@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Support\Facades\Cache;
 
 class Chat extends Model
 {
@@ -84,19 +85,21 @@ class Chat extends Model
      */
     public function unreadCountFor(int $userId): int
     {
-        $participant = $this->chatParticipants()
-            ->where('user_id', $userId)
-            ->first();
+        return Cache::remember("chat:unread:{$this->id}:{$userId}", 90, function () use ($userId) {
+            $participant = $this->chatParticipants()
+                ->where('user_id', $userId)
+                ->first();
 
-        if (!$participant || !$participant->last_read_at) {
-            return $this->messages()->where('sender_id', '!=', $userId)->count();
-        }
+            if (!$participant || !$participant->last_read_at) {
+                return $this->messages()->where('sender_id', '!=', $userId)->count();
+            }
 
-        return $this->messages()
-            ->where('sender_id', '!=', $userId)
-            ->where('created_at', '>', $participant->last_read_at)
-            ->where('is_deleted', false)
-            ->count();
+            return $this->messages()
+                ->where('sender_id', '!=', $userId)
+                ->where('created_at', '>', $participant->last_read_at)
+                ->where('is_deleted', false)
+                ->count();
+        });
     }
 
     /**
@@ -115,13 +118,22 @@ class Chat extends Model
      */
     public static function findPrivateChat(int $userId1, int $userId2): ?self
     {
-        return static::where('type', 'private')
-            ->whereHas('chatParticipants', function ($q) use ($userId1) {
-                $q->where('user_id', $userId1)->whereNull('left_at');
-            })
-            ->whereHas('chatParticipants', function ($q) use ($userId2) {
-                $q->where('user_id', $userId2)->whereNull('left_at');
-            })
-            ->first();
+        $min = min($userId1, $userId2);
+        $max = max($userId1, $userId2);
+
+        $chatId = Cache::remember("chat:private:{$min}:{$max}", 600, function () use ($userId1, $userId2) {
+            $chat = static::where('type', 'private')
+                ->whereHas('chatParticipants', function ($q) use ($userId1) {
+                    $q->where('user_id', $userId1)->whereNull('left_at');
+                })
+                ->whereHas('chatParticipants', function ($q) use ($userId2) {
+                    $q->where('user_id', $userId2)->whereNull('left_at');
+                })
+                ->first();
+
+            return $chat?->id;
+        });
+
+        return $chatId ? static::find($chatId) : null;
     }
 }

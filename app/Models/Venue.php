@@ -33,6 +33,10 @@ class Venue extends Model
         'longitude' => 'float',
     ];
 
+    protected $appends = [
+        'price', 'location'
+    ];
+
     public function store()
     {
         return $this->belongsTo(Store::class);
@@ -61,5 +65,10 @@ class Venue extends Model
     public function getPriceAttribute()
     {
         return $this->price_per_head ?? $this->price_per_hour ?? $this->price_per_day ?? $this->price_per_event;
+    }
+
+    public function getLocationAttribute()
+    {
+        return trim("{$this->address}, {$this->city}, {$this->country}", " ,");
     }
 }

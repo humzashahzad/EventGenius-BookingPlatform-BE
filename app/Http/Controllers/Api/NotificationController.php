@@ -4,28 +4,37 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Notification;
-use App\Services\JwtService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Http\Response;
 
 class NotificationController extends Controller
 {
+    private const CHAT_NOTIFICATION_TYPES = ['chat_message'];
+    private const BOOKING_NOTIFICATION_TYPES = [
+        'booking_created',
+        'booking_confirmed',
+        'booking_rejected',
+        'booking_cancelled',
+        'new_booking_received',
+    ];
+
     /**
      * List notifications for the authenticated user (paginated).
      */
     public function index(Request $request): JsonResponse
     {
-        $notifications = Notification::forUser($request->user()->id)
+        $baseQuery = Notification::forUser($request->user()->id);
+        $notifications = $this->applyTypeFilters(clone $baseQuery, $request)
             ->orderBy('created_at', 'desc')
             ->paginate($request->get('per_page', 20));
 
-        $unreadCount = Notification::forUser($request->user()->id)->unread()->count();
+        $unreadCount = $this->applyTypeFilters(clone $baseQuery, $request)->unread()->count();
 
         return response()->json([
             'success'      => true,
             'data'         => $notifications,
             'unread_count' => $unreadCount,
+            'counts'       => $this->buildCounts(clone $baseQuery),
         ]);
     }
 
@@ -34,10 +43,12 @@ class NotificationController extends Controller
      */
     public function unreadCount(Request $request): JsonResponse
     {
-        $count = Notification::forUser($request->user()->id)->unread()->count();
+        $baseQuery = Notification::forUser($request->user()->id);
+        $filteredBaseQuery = $this->applyTypeFilters(clone $baseQuery, $request);
+        $count = (clone $filteredBaseQuery)->unread()->count();
+        $lastId = (clone $baseQuery)->max('id') ?? 0;
 
-        // Also get the latest 5 unread for the dropdown
-        $latest = Notification::forUser($request->user()->id)
+        $latest = (clone $filteredBaseQuery)
             ->unread()
             ->orderBy('created_at', 'desc')
             ->limit(5)
@@ -47,6 +58,8 @@ class NotificationController extends Controller
             'success'      => true,
             'unread_count' => $count,
             'latest'       => $latest,
+            'last_id'      => $lastId,
+            'counts'       => $this->buildCounts(clone $baseQuery),
         ]);
     }
 
@@ -82,93 +95,46 @@ class NotificationController extends Controller
         return response()->json(['success' => true]);
     }
 
-    /**
-     * SSE (Server-Sent Events) stream for real-time notifications.
-     * JWT token passed as query param: ?token=xxx
-     */
-    public function stream(Request $request): Response
+    private function applyTypeFilters($query, Request $request)
     {
-        // Authenticate via token query param (SSE cannot send headers)
-        $token = $request->query('token');
-        $user  = null;
+        $types = collect((array) $request->input('types', []))
+            ->filter(fn ($value) => is_string($value) && $value !== '')
+            ->values()
+            ->all();
 
-        if ($token) {
-            try {
-                $jwtService = app(JwtService::class);
-                $user      = $jwtService->validate($token);
-            } catch (\Throwable) {
-                $user = null;
-            }
+        $excludeTypes = collect((array) $request->input('exclude_types', []))
+            ->filter(fn ($value) => is_string($value) && $value !== '')
+            ->values()
+            ->all();
+
+        if (!empty($types)) {
+            $query->whereIn('type', $types);
         }
 
-        if (!$user) {
-            return response('Unauthorized', 401);
+        if (!empty($excludeTypes)) {
+            $query->whereNotIn('type', $excludeTypes);
         }
 
-        $userId    = $user->id;
-        $lastId    = (int) ($request->header('Last-Event-ID') ?? $request->query('lastId', 0));
-
-        $stream = function () use ($userId, $lastId) {
-            // Disable output buffering
-            if (ob_get_level()) ob_end_clean();
-            set_time_limit(0);
-            ignore_user_abort(true);
-
-            // Send initial connection event
-            echo "event: connected\n";
-            echo "data: " . json_encode(['status' => 'connected', 'user_id' => $userId]) . "\n\n";
-            flush();
-
-            $currentLastId = $lastId;
-            $elapsed       = 0;
-            $interval      = 1; // poll DB every 1 second for faster in-app/socket-like delivery
-            $maxTime       = 55; // close after 55 seconds, client will reconnect
-
-            while ($elapsed < $maxTime) {
-                if (connection_aborted()) break;
-
-                sleep($interval);
-                $elapsed += $interval;
-
-                // Fetch new notifications since last sent
-                $notifications = \App\Models\Notification::where('user_id', $userId)
-                    ->where('id', '>', $currentLastId)
-                    ->orderBy('id', 'asc')
-                    ->limit(10)
-                    ->get();
-
-                foreach ($notifications as $n) {
-                    $currentLastId = $n->id;
-                    echo "id: {$n->id}\n";
-                    echo "event: notification\n";
-                    echo "data: " . json_encode([
-                        'id'         => $n->id,
-                        'type'       => $n->type,
-                        'title'      => $n->title,
-                        'body'       => $n->body,
-                        'data'       => $n->data,
-                        'is_read'    => $n->is_read,
-                        'created_at' => $n->created_at->toISOString(),
-                    ]) . "\n\n";
-                    flush();
-                }
-
-                // Heartbeat to keep connection alive
-                echo ": heartbeat\n\n";
-                flush();
-            }
-
-            // Signal client to reconnect
-            echo "event: reconnect\n";
-            echo "data: " . json_encode(['reconnect' => true]) . "\n\n";
-            flush();
-        };
-
-        return response()->stream($stream, 200, [
-            'Content-Type'      => 'text/event-stream',
-            'Cache-Control'     => 'no-cache, no-store',
-            'X-Accel-Buffering' => 'no',
-            'Connection'        => 'keep-alive',
-        ]);
+        return $query;
     }
+
+    private function buildCounts($baseQuery): array
+    {
+        return [
+            'all' => (clone $baseQuery)->unread()->count(),
+            'general' => (clone $baseQuery)
+                ->whereNotIn('type', self::CHAT_NOTIFICATION_TYPES)
+                ->unread()
+                ->count(),
+            'chat' => (clone $baseQuery)
+                ->whereIn('type', self::CHAT_NOTIFICATION_TYPES)
+                ->unread()
+                ->count(),
+            'booking' => (clone $baseQuery)
+                ->whereIn('type', self::BOOKING_NOTIFICATION_TYPES)
+                ->unread()
+                ->count(),
+        ];
+    }
+
 }

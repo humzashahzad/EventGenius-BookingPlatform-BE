@@ -54,7 +54,7 @@ class PayFastService
             'name_first'     => $firstName,
             'name_last'      => $lastName,
             'email_address'  => $user->email ?? 'test@example.com',
-            'cell_number'    => $user->phone ?? '03001234567',
+            // Removed cell_number to prevent PayFast validation errors with non-South African numbers
 
             // Transaction details
             'm_payment_id'   => $mPaymentId,

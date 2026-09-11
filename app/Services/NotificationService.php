@@ -2,8 +2,10 @@
 
 namespace App\Services;
 
+use App\Events\NotificationCreated;
 use App\Models\Notification;
 use App\Models\User;
+use Throwable;
 
 class NotificationService
 {
@@ -14,18 +16,22 @@ class NotificationService
     {
         $ids = is_array($userIds) ? $userIds : [$userIds];
 
-        $rows = array_map(fn($id) => [
-            'user_id'    => $id,
-            'type'       => $type,
-            'title'      => $title,
-            'body'       => $body,
-            'data'       => json_encode($data),
-            'is_read'    => false,
-            'created_at' => now(),
-            'updated_at' => now(),
-        ], $ids);
+        foreach ($ids as $id) {
+            $notification = Notification::create([
+                'user_id' => $id,
+                'type'    => $type,
+                'title'   => $title,
+                'body'    => $body,
+                'data'    => $data,
+                'is_read' => false,
+            ]);
 
-        Notification::insert($rows);
+            try {
+                event(new NotificationCreated($notification));
+            } catch (Throwable $exception) {
+                report($exception);
+            }
+        }
     }
 
     /**

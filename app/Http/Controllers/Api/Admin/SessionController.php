@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Models\UserSession;
 use App\Services\JwtService;
+use App\Services\NotificationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -71,9 +72,17 @@ class SessionController extends Controller
 
         $session->update(['is_revoked' => true]);
 
+        NotificationService::send(
+            (int) $session->user_id,
+            'session_revoked',
+            'Session Revoked',
+            'One of your active sessions was revoked by support. Please sign in again.',
+            ['session_id' => $session->id]
+        );
+
         return response()->json([
             'success' => true,
-            'message' => 'Session revoked successfully. User will be logged out on next request.',
+            'message' => 'Session revoked successfully. User will be logged out shortly.',
         ]);
     }
 
@@ -89,6 +98,16 @@ class SessionController extends Controller
             ->count();
 
         $this->jwt->revokeAllForUser($userId);
+
+        if ($revokedCount > 0) {
+            NotificationService::send(
+                (int) $userId,
+                'session_revoked',
+                'All Sessions Revoked',
+                'Your active sessions were revoked by support. Please sign in again.',
+                ['revoked_count' => $revokedCount]
+            );
+        }
 
         return response()->json([
             'success' => true,

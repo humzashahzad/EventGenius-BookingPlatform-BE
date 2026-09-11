@@ -18,6 +18,7 @@ class PublicStoreController extends Controller
                   ->withCount('bookings')
                   ->orderBy('created_at', 'desc');
             },
+            'landingPage',
         ])->findOrFail($id);
 
         // Add stats

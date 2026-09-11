@@ -83,9 +83,12 @@ class User extends Authenticatable
 
     /**
      * Check if user is online (seen within last 2 minutes).
+     * Cached for 30 seconds to reduce DB hits on chat user lists.
      */
     public function isOnline(): bool
     {
-        return $this->last_seen_at && $this->last_seen_at->gt(now()->subMinutes(2));
+        return \Illuminate\Support\Facades\Cache::remember("user:online:{$this->id}", 30, function () {
+            return $this->last_seen_at && $this->last_seen_at->gt(now()->subMinutes(2));
+        });
     }
 }

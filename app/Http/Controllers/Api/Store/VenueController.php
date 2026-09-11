@@ -52,15 +52,22 @@ class VenueController extends Controller
             'capacity_max'   => 'required|integer|min:1',
             'area_sqft'      => 'nullable|integer',
             'floors'         => 'sometimes|integer|min:1',
-            'price_per_hour' => 'nullable|numeric|min:0',
-            'price_per_day'  => 'nullable|numeric|min:0',
-            'price_per_event'=> 'nullable|numeric|min:0',
-            'pricing_type'   => 'required|in:per_hour,per_day,per_event,negotiable',
-            'dynamic_pricing'=> 'sometimes|boolean',
-            'event_types'    => 'nullable|array',
-            'event_types.*'  => 'string',
+            'price_per_head'  => 'required|numeric|min:0',
+            'price_per_hour'  => 'nullable|numeric|min:0',
+            'price_per_day'   => 'nullable|numeric|min:0',
+            'price_per_event' => 'nullable|numeric|min:0',
+            'pricing_type'    => 'nullable|in:per_hour,per_day,per_event,per_head,negotiable',
+            'dynamic_pricing' => 'sometimes|boolean',
+            'event_types'     => 'nullable|array',
+            'event_types.*'   => 'string',
+            'operating_start' => 'nullable|date_format:H:i',
+            'operating_end'   => 'nullable|date_format:H:i',
+            'latitude'        => 'nullable|numeric',
+            'longitude'       => 'nullable|numeric',
+            'country'         => 'sometimes|string|max:255',
         ]);
 
+        $validated['pricing_type'] = 'per_head';
         $validated['store_id'] = $store->id;
         $validated['slug']     = Str::slug($validated['name']) . '-' . Str::random(6);
 
@@ -103,14 +110,28 @@ class VenueController extends Controller
             'capacity_max'   => 'sometimes|integer|min:1',
             'area_sqft'      => 'nullable|integer',
             'floors'         => 'sometimes|integer|min:1',
-            'price_per_hour' => 'nullable|numeric|min:0',
-            'price_per_day'  => 'nullable|numeric|min:0',
-            'price_per_event'=> 'nullable|numeric|min:0',
-            'pricing_type'   => 'sometimes|in:per_hour,per_day,per_event,negotiable',
+            'price_per_head'  => 'sometimes|numeric|min:0',
+            'price_per_hour'  => 'nullable|numeric|min:0',
+            'price_per_day'   => 'nullable|numeric|min:0',
+            'price_per_event' => 'nullable|numeric|min:0',
+            'pricing_type'    => 'nullable|in:per_hour,per_day,per_event,per_head,negotiable',
             'dynamic_pricing'=> 'sometimes|boolean',
-            'event_types'    => 'nullable|array',
-            'status'         => 'sometimes|in:active,inactive',
+            'event_types'     => 'nullable|array',
+            'status'          => 'sometimes|in:active,inactive',
+            'operating_start' => 'nullable|date_format:H:i',
+            'operating_end'   => 'nullable|date_format:H:i',
+            'latitude'        => 'nullable|numeric',
+            'longitude'       => 'nullable|numeric',
+            'country'         => 'sometimes|string|max:255',
         ]);
+
+        if (
+            array_key_exists('price_per_head', $validated)
+            || array_key_exists('pricing_type', $validated)
+            || $venue->price_per_head !== null
+        ) {
+            $validated['pricing_type'] = 'per_head';
+        }
 
         $venue->update($validated);
         $venue->load(['images', 'amenities']);

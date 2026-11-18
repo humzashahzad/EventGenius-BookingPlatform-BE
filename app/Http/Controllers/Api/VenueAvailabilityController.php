@@ -16,7 +16,7 @@ class VenueAvailabilityController extends Controller
             'date' => 'required|date|after:today',
         ]);
 
-        $venue = Venue::findOrFail($venueId);
+        $venue = $this->bookableVenue($venueId);
 
         // Get all booked slots for this venue on the specified date
         $bookedSlots = Booking::where('venue_id', $venue->id)
@@ -46,7 +46,7 @@ class VenueAvailabilityController extends Controller
             'month' => 'required|integer|min:1|max:12',
         ]);
 
-        $venue = Venue::findOrFail($venueId);
+        $venue = $this->bookableVenue($venueId);
 
         $startDate = sprintf('%04d-%02d-01', $request->year, $request->month);
         $endDate = date('Y-m-t', strtotime($startDate));
@@ -69,5 +69,13 @@ class VenueAvailabilityController extends Controller
                 'booked_dates' => $bookings,
             ],
         ]);
+    }
+
+    /** Only venues that are active and belong to an approved store are public. */
+    private function bookableVenue(string $venueId): Venue
+    {
+        return Venue::where('status', 'active')
+            ->whereHas('store', fn ($q) => $q->where('status', 'approved'))
+            ->findOrFail($venueId);
     }
 }

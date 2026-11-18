@@ -21,5 +21,13 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->validateCsrfTokens(except: ['api/*']);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
-        //
+        // Multi-tenancy (stancl) is installed but no tenants exist. Requests for
+        // unknown hosts (e.g. bots hitting the bare server IP) used to surface as
+        // a logged ERROR + HTTP 500. Treat them as a plain 404 and don't log them.
+        $exceptions->dontReport(\Stancl\Tenancy\Contracts\TenantCouldNotBeIdentifiedException::class);
+        $exceptions->render(function (\Stancl\Tenancy\Contracts\TenantCouldNotBeIdentifiedException $e, $request) {
+            return $request->expectsJson()
+                ? response()->json(['success' => false, 'message' => 'Not found.'], 404)
+                : response('Not Found', 404);
+        });
     })->create();

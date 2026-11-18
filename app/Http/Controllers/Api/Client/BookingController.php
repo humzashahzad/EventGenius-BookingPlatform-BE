@@ -8,6 +8,7 @@ use App\Models\Venue;
 use App\Services\NotificationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 
 class BookingController extends Controller
@@ -51,7 +52,14 @@ class BookingController extends Controller
             'event_date.after'  => 'Bookings must be made at least one day in advance.',
         ]);
 
-        $venue = Venue::where('status', 'active')->findOrFail($validated['venue_id']);
+        $venue = $this->findBookableVenue($validated['venue_id']);
+        if (!$venue) {
+            return response()->json([
+                'success' => false,
+                'message' => 'This venue is not currently accepting bookings.',
+                'errors'  => ['venue_id' => ['This venue is not currently accepting bookings.']],
+            ], 422);
+        }
 
         // A venue only accepts the event types its owner listed (when any are listed).
         $offeredTypes = $venue->event_types ?: [];
@@ -63,24 +71,24 @@ class BookingController extends Controller
             ], 422);
         }
 
-        $conflict = Booking::where('venue_id', $venue->id)
-            ->where('event_date', $validated['event_date'])
-            ->whereIn('status', ['pending', 'confirmed'])
-            ->where(function ($q) use ($validated) {
-                $q->whereBetween('start_time', [$validated['start_time'], $validated['end_time']])
-                  ->orWhereBetween('end_time', [$validated['start_time'], $validated['end_time']]);
-            })->exists();
-
-        if ($conflict) {
+        // Guest count must fit the venue's capacity range.
+        $capMin = (int) ($venue->capacity_min ?: 1);
+        $capMax = (int) $venue->capacity_max;
+        $guests = (int) $validated['expected_guests'];
+        if ($guests < $capMin || ($capMax > 0 && $guests > $capMax)) {
+            $msg = $capMax > 0
+                ? "This venue accommodates between {$capMin} and {$capMax} guests."
+                : "This venue requires at least {$capMin} guests.";
             return response()->json([
                 'success' => false,
-                'message' => 'This venue is not available for the selected date and time.',
+                'message' => $msg,
+                'errors'  => ['expected_guests' => [$msg]],
             ], 422);
         }
 
         // Check venue operating hours
-        $opStart = $venue->operating_start ?? '00:00';
-        $opEnd   = $venue->operating_end ?? '23:59';
+        $opStart = substr($venue->operating_start ?: '00:00', 0, 5);
+        $opEnd   = substr($venue->operating_end ?: '23:59', 0, 5);
 
         // Normalize 23:59 to 24:00 for comparison if needed, 
         // but it's easier to just compare strings if they are H:i
@@ -98,24 +106,42 @@ class BookingController extends Controller
         $taxAmount   = round($basePrice * 0.05, 2);
         $totalAmount = round($basePrice + $taxAmount, 2);
 
-        $booking = Booking::create([
-            ...$validated,
-            'client_id'      => $request->user()->id,
-            'store_id'       => $venue->store_id,
-            'duration_hours' => $hours,
-            'base_price'     => $basePrice,
-            'amenities_price'=> 0,
-            'discount_amount'=> 0,
-            'tax_amount'     => $taxAmount,
-            'total_amount'   => $totalAmount,
-            'status'         => 'pending',
-        ]);
+        // Conflict check + insert run atomically: the venue row is locked so two
+        // concurrent requests for the same venue can't both pass the check.
+        $booking = DB::transaction(function () use ($venue, $validated, $request, $hours, $basePrice, $taxAmount, $totalAmount) {
+            Venue::whereKey($venue->id)->lockForUpdate()->first();
+
+            if ($this->hasConflict($venue->id, $validated['event_date'], $validated['start_time'], $validated['end_time'])) {
+                return null;
+            }
+
+            return Booking::create([
+                ...$validated,
+                'client_id'      => $request->user()->id,
+                'store_id'       => $venue->store_id,
+                'duration_hours' => $hours,
+                'base_price'     => $basePrice,
+                'amenities_price'=> 0,
+                'discount_amount'=> 0,
+                'tax_amount'     => $taxAmount,
+                'total_amount'   => $totalAmount,
+                'status'         => 'pending',
+            ]);
+        });
+
+        if (!$booking) {
+            return response()->json([
+                'success' => false,
+                'message' => 'This venue is already booked for part of the selected time. Please choose another slot.',
+                'errors'  => ['start_time' => ['This venue is already booked for part of the selected time.']],
+            ], 422);
+        }
 
         $booking->load(['venue:id,name,city', 'store:id,name']);
 
         $clientName = $request->user()->name;
         $venueName  = $venue->name;
-        $eventDate  = $booking->event_date;
+        $eventDate  = $booking->event_date->format('D, j M Y');
 
         if ($venue->store && $venue->store->user_id) {
             NotificationService::notifyStoreOwner(
@@ -147,6 +173,29 @@ class BookingController extends Controller
             'data'    => $booking,
             'message' => 'Booking created successfully.',
         ], 201);
+    }
+
+    /** Active venue whose store is approved, or null. */
+    private function findBookableVenue(int|string $venueId): ?Venue
+    {
+        return Venue::with('store')
+            ->where('status', 'active')
+            ->whereHas('store', fn ($q) => $q->where('status', 'approved'))
+            ->find($venueId);
+    }
+
+    /**
+     * True when an active (pending/confirmed) booking overlaps [start, end).
+     * Strict comparison so back-to-back slots (one ends 20:00, next starts 20:00) are allowed.
+     */
+    private function hasConflict(int $venueId, string $date, string $start, string $end): bool
+    {
+        return Booking::where('venue_id', $venueId)
+            ->whereDate('event_date', \Carbon\Carbon::parse($date)->toDateString())
+            ->whereIn('status', ['pending', 'confirmed'])
+            ->where('start_time', '<', $end . ':00')
+            ->where('end_time', '>', $start . ':00')
+            ->exists();
     }
 
     public function show(Request $request, string $id): JsonResponse

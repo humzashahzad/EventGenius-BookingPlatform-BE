@@ -37,7 +37,8 @@ class VenueController extends Controller
 
         if ($request->filled('max_price')) {
             $query->where(function ($q) use ($request) {
-                $q->where('price_per_hour', '<=', $request->max_price)
+                $q->where('price_per_head', '<=', $request->max_price)
+                  ->orWhere('price_per_hour', '<=', $request->max_price)
                   ->orWhere('price_per_day', '<=', $request->max_price)
                   ->orWhere('price_per_event', '<=', $request->max_price);
             });
@@ -49,7 +50,7 @@ class VenueController extends Controller
 
         $sortBy = $request->get('sort_by', 'created_at');
         $sortDir = $request->get('sort_dir', 'desc');
-        $allowedSorts = ['created_at', 'avg_rating', 'price_per_hour', 'price_per_day', 'price_per_event'];
+        $allowedSorts = ['created_at', 'avg_rating', 'price_per_head', 'price_per_hour', 'price_per_day', 'price_per_event'];
         if (in_array($sortBy, $allowedSorts)) {
             $query->orderBy($sortBy, $sortDir === 'asc' ? 'asc' : 'desc');
         }
@@ -70,7 +71,9 @@ class VenueController extends Controller
             'images',
             'amenities',
             'reviews' => fn($q) => $q->with('client:id,name,avatar')->where('is_approved', true)->latest()->limit(10),
-        ])->where('status', 'active')->findOrFail($id);
+        ])->where('status', 'active')
+          ->whereHas('store', fn($q) => $q->where('status', 'approved'))
+          ->findOrFail($id);
 
         return response()->json(['success' => true, 'data' => $venue]);
     }

@@ -50,23 +50,43 @@ class UserController extends Controller
             'role'  => 'sometimes|in:admin,store_owner,client',
         ]);
 
+        if ($this->isSelf($request, $user) && isset($validated['role']) && $validated['role'] !== $user->role) {
+            return $this->selfActionDenied('You cannot change your own role.');
+        }
+
         $user->update($validated);
 
         return response()->json(['success' => true, 'data' => $user, 'message' => 'User updated.']);
     }
 
-    public function destroy(string $id): JsonResponse
+    public function destroy(Request $request, string $id): JsonResponse
     {
         $user = User::findOrFail($id);
+        if ($this->isSelf($request, $user)) {
+            return $this->selfActionDenied('You cannot delete your own account.');
+        }
         $user->delete();
         return response()->json(['success' => true, 'message' => 'User deleted.']);
     }
 
-    public function toggleStatus(string $id): JsonResponse
+    public function toggleStatus(Request $request, string $id): JsonResponse
     {
         $user = User::findOrFail($id);
+        if ($this->isSelf($request, $user)) {
+            return $this->selfActionDenied('You cannot deactivate your own account.');
+        }
         $user->update(['is_active' => !$user->is_active]);
         $status = $user->is_active ? 'activated' : 'deactivated';
         return response()->json(['success' => true, 'data' => $user, 'message' => "User {$status}."]);
+    }
+
+    private function isSelf(Request $request, User $user): bool
+    {
+        return (int) $request->user()?->id === (int) $user->id;
+    }
+
+    private function selfActionDenied(string $message): JsonResponse
+    {
+        return response()->json(['success' => false, 'message' => $message], 422);
     }
 }

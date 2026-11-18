@@ -69,6 +69,15 @@ class Venue extends Model
 
     public function getLocationAttribute()
     {
-        return trim("{$this->address}, {$this->city}, {$this->country}", " ,");
+        // Avoid "…, Kamalia, Pakistan, Kamalia, Pakistan" when the address already includes them.
+        $address = trim((string) $this->address);
+        $parts = [$address];
+        foreach ([$this->city, $this->country] as $extra) {
+            $extra = trim((string) $extra);
+            if ($extra !== '' && stripos($address, $extra) === false) {
+                $parts[] = $extra;
+            }
+        }
+        return implode(', ', array_filter($parts));
     }
 }

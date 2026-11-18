@@ -56,6 +56,11 @@ class DashboardController extends Controller
                     'total_revenue'     => $revenue,
                 ],
                 'recent_bookings' => $recentBookings,
+                'charts' => [
+                    'revenue_trend'     => \App\Services\DashboardCharts::revenueTrend($store->id),
+                    'bookings_trend'    => \App\Services\DashboardCharts::bookingsTrend($store->id),
+                    'bookings_by_venue' => \App\Services\DashboardCharts::bookingsByVenue($store->id),
+                ],
             ],
         ]);
     }

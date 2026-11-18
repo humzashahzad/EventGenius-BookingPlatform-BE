@@ -176,8 +176,17 @@ Route::prefix('client')
     ->group(function () {
         // Get PayFast form fields + signature for a booking
         Route::get('/bookings/{id}/payment-data', [PayFastController::class, 'paymentData']);
-        // Manual payment confirmation (sandbox — ITN can't reach localhost)
-        Route::post('/bookings/{id}/confirm-payment', [PayFastController::class, 'confirmPayment']);
+        // Read-only payment status (success page polls this until the ITN arrives)
+        Route::get('/bookings/{id}/payment-status', [PayFastController::class, 'paymentStatus']);
+        // Client came back via PayFast cancel_url: cancel their own pending payment
+        Route::post('/bookings/{id}/payment-cancelled', [PayFastController::class, 'paymentCancelled']);
+    });
+
+// Admin only: manual "mark paid" for demos (clients can never mark a booking paid)
+Route::prefix('admin')
+    ->middleware(['jwt', 'role:admin'])
+    ->group(function () {
+        Route::post('/bookings/{id}/mark-paid', [PayFastController::class, 'adminMarkPaid']);
     });
 
 // Public: PayFast ITN callback (NO auth — PayFast sends this server-to-server)

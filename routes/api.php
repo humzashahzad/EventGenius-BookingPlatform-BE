@@ -28,10 +28,10 @@ use App\Http\Controllers\Api\Client\ProfileController as ClientProfileController
 
 // ─── Auth (Public) ────────────────────────────────────────────────────────────
 Route::prefix('auth')->group(function () {
-    Route::post('/register', [AuthController::class, 'register']);
-    Route::post('/login', [AuthController::class, 'login']);
-    Route::post('/forgot-password', [AuthController::class, 'forgotPassword']);
-    Route::post('/reset-password', [AuthController::class, 'resetPassword']);
+    Route::post('/register', [AuthController::class, 'register'])->middleware('throttle:auth-register');
+    Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:auth-login');
+    Route::post('/forgot-password', [AuthController::class, 'forgotPassword'])->middleware('throttle:auth-password');
+    Route::post('/reset-password', [AuthController::class, 'resetPassword'])->middleware('throttle:auth-password');
 
     Route::middleware('jwt')->group(function () {
         Route::get('/me', [AuthController::class, 'me']);
@@ -176,8 +176,17 @@ Route::prefix('client')
     ->group(function () {
         // Get PayFast form fields + signature for a booking
         Route::get('/bookings/{id}/payment-data', [PayFastController::class, 'paymentData']);
-        // Manual payment confirmation (sandbox — ITN can't reach localhost)
-        Route::post('/bookings/{id}/confirm-payment', [PayFastController::class, 'confirmPayment']);
+        // Read-only payment status (success page polls this until the ITN arrives)
+        Route::get('/bookings/{id}/payment-status', [PayFastController::class, 'paymentStatus']);
+        // Client came back via PayFast cancel_url: cancel their own pending payment
+        Route::post('/bookings/{id}/payment-cancelled', [PayFastController::class, 'paymentCancelled']);
+    });
+
+// Admin only: manual "mark paid" for demos (clients can never mark a booking paid)
+Route::prefix('admin')
+    ->middleware(['jwt', 'role:admin'])
+    ->group(function () {
+        Route::post('/bookings/{id}/mark-paid', [PayFastController::class, 'adminMarkPaid']);
     });
 
 // Public: PayFast ITN callback (NO auth — PayFast sends this server-to-server)
@@ -216,4 +225,35 @@ Route::middleware('jwt')->group(function () {
     // Search users to start a chat
     Route::get('/nexus/users/search', [NexusChatController::class, 'searchUsers']);
     Route::get('/nexus/eligible-contacts', [NexusChatController::class, 'eligibleContacts']);
+});
+
+// ─── Reviews & Amenities (fix/features) ──────────────────────────────────────
+use App\Http\Controllers\Api\VenueReviewController;
+use App\Http\Controllers\Api\Client\ReviewController as ClientReviewController;
+use App\Http\Controllers\Api\Store\ReviewController as StoreReviewController;
+use App\Http\Controllers\Api\Store\AmenityController as StoreAmenityController;
+use App\Http\Controllers\Api\Admin\ReviewController as AdminReviewController;
+
+// Public: approved reviews for a venue (paginated)
+Route::get('/venues/{id}/reviews', [VenueReviewController::class, 'index']);
+
+Route::prefix('client')->middleware(['jwt', 'role:client'])->group(function () {
+    Route::get('/bookings/{id}/review', [ClientReviewController::class, 'show']);
+    Route::post('/bookings/{id}/review', [ClientReviewController::class, 'store']);
+});
+
+Route::prefix('store')->middleware(['jwt', 'role:store_owner'])->group(function () {
+    Route::get('/reviews', [StoreReviewController::class, 'index']);
+    Route::post('/reviews/{id}/reply', [StoreReviewController::class, 'reply']);
+
+    Route::get('/venues/{id}/amenities', [StoreAmenityController::class, 'index']);
+    Route::post('/venues/{id}/amenities', [StoreAmenityController::class, 'store']);
+    Route::put('/venues/{venueId}/amenities/{amenityId}', [StoreAmenityController::class, 'update']);
+    Route::delete('/venues/{venueId}/amenities/{amenityId}', [StoreAmenityController::class, 'destroy']);
+});
+
+Route::prefix('admin')->middleware(['jwt', 'role:admin'])->group(function () {
+    Route::get('/reviews', [AdminReviewController::class, 'index']);
+    Route::patch('/reviews/{id}/toggle-approval', [AdminReviewController::class, 'toggleApproval']);
+    Route::delete('/reviews/{id}', [AdminReviewController::class, 'destroy']);
 });

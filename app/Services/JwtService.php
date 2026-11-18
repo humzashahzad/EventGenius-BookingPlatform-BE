@@ -60,7 +60,7 @@ class JwtService
 
     // ── Create token for a user ───────────────────────────────────────────────
 
-    public function createToken(User $user, string $ipAddress = null, string $userAgent = null): array
+    public function createToken(User $user, ?string $ipAddress = null, ?string $userAgent = null): array
     {
         $jti = Str::uuid()->toString(); // unique token ID
 

@@ -45,6 +45,11 @@ class DashboardController extends Controller
                 'bookings_by_status' => $bookingsByStatus,
                 'recent_bookings'    => $recentBookings,
                 'recent_stores'      => $recentStores,
+                'charts' => [
+                    'revenue_trend'  => \App\Services\DashboardCharts::revenueTrend(),
+                    'bookings_trend' => \App\Services\DashboardCharts::bookingsTrend(),
+                ],
+                'recent_activity' => \App\Services\DashboardCharts::recentActivity(),
             ],
         ]);
     }

@@ -45,6 +45,22 @@ class BookingController extends Controller
         $booking = Booking::with(['venue:id,name','client:id,name'])
             ->where('store_id', $store->id)->where('status','pending')->findOrFail($id);
 
+        // Never confirm on top of another confirmed booking for the same slot
+        // (e.g. overlapping requests created before overlap checks were fixed).
+        $clash = Booking::where('venue_id', $booking->venue_id)
+            ->where('id', '!=', $booking->id)
+            ->whereDate('event_date', $booking->event_date->toDateString())
+            ->where('status', 'confirmed')
+            ->where('start_time', '<', $booking->end_time)
+            ->where('end_time', '>', $booking->start_time)
+            ->exists();
+        if ($clash) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Another confirmed booking already occupies part of this time slot.',
+            ], 422);
+        }
+
         $booking->update(['status' => 'confirmed', 'confirmed_at' => now()]);
 
         $venueName = $booking->venue?->name ?? 'venue';

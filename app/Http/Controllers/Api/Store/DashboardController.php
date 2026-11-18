@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\Store;
 
 use App\Http\Controllers\Controller;
 use App\Models\Booking;
+use App\Models\Payment;
 use App\Models\Venue;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -30,7 +31,10 @@ class DashboardController extends Controller
         $totalBookings  = Booking::where('store_id', $store->id)->count();
         $pendingBookings= Booking::where('store_id', $store->id)->where('status', 'pending')->count();
         $confirmedBookings = Booking::where('store_id', $store->id)->where('status', 'confirmed')->count();
-        $revenue        = Booking::where('store_id', $store->id)->where('status', 'completed')->sum('total_amount');
+        // Revenue = PKR amount of this store's completed payments
+        $revenue        = (float) Payment::where('status', 'completed')
+            ->whereHas('booking', fn ($q) => $q->where('store_id', $store->id))
+            ->sum('amount');
 
         $recentBookings = Booking::with(['client:id,name,email', 'venue:id,name'])
             ->where('store_id', $store->id)

@@ -164,6 +164,13 @@ class BookingController extends Controller
             ->whereIn('status', ['pending', 'confirmed'])
             ->findOrFail($id);
 
+        if ($booking->payment_status === 'paid') {
+            return response()->json([
+                'success' => false,
+                'message' => 'This booking has already been paid and cannot be cancelled online. Please contact support to request a refund.',
+            ], 422);
+        }
+
         $request->validate(['reason' => 'nullable|string|max:500']);
 
         $booking->update([

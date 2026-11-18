@@ -10,7 +10,7 @@ class Payment extends Model
     use SoftDeletes;
     protected $fillable = [
         'booking_id', 'client_id', 'transaction_id', 'payment_reference',
-        'amount', 'currency', 'payment_method', 'status',
+        'amount', 'currency', 'gateway_amount', 'gateway_currency', 'exchange_rate', 'payment_method', 'status',
         'gateway_response', 'receipt_path', 'paid_at', 'refunded_at', 'notes',
     ];
 
@@ -19,6 +19,8 @@ class Payment extends Model
         'paid_at' => 'datetime',
         'refunded_at' => 'datetime',
         'amount' => 'float',
+        'gateway_amount' => 'float',
+        'exchange_rate' => 'float',
     ];
 
     public function booking()

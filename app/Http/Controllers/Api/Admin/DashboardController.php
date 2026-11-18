@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Booking;
+use App\Models\Payment;
 use App\Models\Store;
 use App\Models\User;
 use App\Models\Venue;
@@ -18,7 +19,8 @@ class DashboardController extends Controller
         $pendingStores = Store::where('status', 'pending')->count();
         $totalVenues   = Venue::count();
         $totalBookings = Booking::count();
-        $revenue       = Booking::where('status', 'completed')->sum('total_amount');
+        // Revenue = PKR amount of payments actually completed (PayFast ITN / admin)
+        $revenue       = (float) Payment::where('status', 'completed')->sum('amount');
 
         $recentBookings = Booking::with(['client:id,name,email', 'venue:id,name', 'store:id,name'])
             ->latest()->limit(10)->get();

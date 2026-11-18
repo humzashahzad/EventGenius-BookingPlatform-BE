@@ -75,6 +75,13 @@ class BookingController extends Controller
         $booking = Booking::with(['venue:id,name','client:id,name'])
             ->where('store_id',$store->id)->whereIn('status',['pending','confirmed'])->findOrFail($id);
 
+        if ($booking->payment_status === 'paid') {
+            return response()->json([
+                'success' => false,
+                'message' => 'This booking has already been paid and cannot be rejected. Contact an administrator to arrange a refund.',
+            ], 422);
+        }
+
         $booking->update(['status' => 'rejected', 'rejection_reason' => $request->reason]);
 
         $venueName = $booking->venue?->name ?? 'venue';

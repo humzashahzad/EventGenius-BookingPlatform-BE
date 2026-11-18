@@ -8,6 +8,7 @@ use App\Models\Venue;
 use App\Services\NotificationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 
 class BookingController extends Controller
 {
@@ -31,15 +32,36 @@ class BookingController extends Controller
         $validated = $request->validate([
             'venue_id'             => 'required|exists:venues,id',
             'event_name'           => 'required|string|max:255',
-            'event_type'           => 'required|in:wedding,corporate,birthday,film_shoot,concert,exhibition,other',
+            'event_type'           => [
+                'required',
+                'string',
+                'max:100',
+                // Event types are the admin-managed categories, not a fixed list.
+                Rule::exists('categories', 'slug')
+                    ->where('is_active', true)
+                    ->whereNull('deleted_at'),
+            ],
             'event_date'           => 'required|date|after:today',
             'start_time'           => 'required|date_format:H:i',
             'end_time'             => 'required|date_format:H:i|after:start_time',
             'expected_guests'      => 'required|integer|min:1',
             'special_requirements' => 'nullable|string',
+        ], [
+            'event_type.exists' => 'The selected event type is not an available category.',
+            'event_date.after'  => 'Bookings must be made at least one day in advance.',
         ]);
 
         $venue = Venue::where('status', 'active')->findOrFail($validated['venue_id']);
+
+        // A venue only accepts the event types its owner listed (when any are listed).
+        $offeredTypes = $venue->event_types ?: [];
+        if ($offeredTypes && !in_array($validated['event_type'], $offeredTypes, true)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'This venue does not host that type of event.',
+                'errors'  => ['event_type' => ['This venue does not host that type of event.']],
+            ], 422);
+        }
 
         $conflict = Booking::where('venue_id', $venue->id)
             ->where('event_date', $validated['event_date'])

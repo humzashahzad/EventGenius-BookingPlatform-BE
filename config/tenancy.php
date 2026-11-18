@@ -21,6 +21,8 @@ return [
         'localhost',
         'event-genius.localhost',
         'admin-panel.localhost',
+        'api.eventgenius.m-dev.me',
+        'eventgenius.m-dev.me',
     ],
 
     /**

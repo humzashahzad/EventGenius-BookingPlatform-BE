@@ -217,3 +217,34 @@ Route::middleware('jwt')->group(function () {
     Route::get('/nexus/users/search', [NexusChatController::class, 'searchUsers']);
     Route::get('/nexus/eligible-contacts', [NexusChatController::class, 'eligibleContacts']);
 });
+
+// ─── Reviews & Amenities (fix/features) ──────────────────────────────────────
+use App\Http\Controllers\Api\VenueReviewController;
+use App\Http\Controllers\Api\Client\ReviewController as ClientReviewController;
+use App\Http\Controllers\Api\Store\ReviewController as StoreReviewController;
+use App\Http\Controllers\Api\Store\AmenityController as StoreAmenityController;
+use App\Http\Controllers\Api\Admin\ReviewController as AdminReviewController;
+
+// Public: approved reviews for a venue (paginated)
+Route::get('/venues/{id}/reviews', [VenueReviewController::class, 'index']);
+
+Route::prefix('client')->middleware(['jwt', 'role:client'])->group(function () {
+    Route::get('/bookings/{id}/review', [ClientReviewController::class, 'show']);
+    Route::post('/bookings/{id}/review', [ClientReviewController::class, 'store']);
+});
+
+Route::prefix('store')->middleware(['jwt', 'role:store_owner'])->group(function () {
+    Route::get('/reviews', [StoreReviewController::class, 'index']);
+    Route::post('/reviews/{id}/reply', [StoreReviewController::class, 'reply']);
+
+    Route::get('/venues/{id}/amenities', [StoreAmenityController::class, 'index']);
+    Route::post('/venues/{id}/amenities', [StoreAmenityController::class, 'store']);
+    Route::put('/venues/{venueId}/amenities/{amenityId}', [StoreAmenityController::class, 'update']);
+    Route::delete('/venues/{venueId}/amenities/{amenityId}', [StoreAmenityController::class, 'destroy']);
+});
+
+Route::prefix('admin')->middleware(['jwt', 'role:admin'])->group(function () {
+    Route::get('/reviews', [AdminReviewController::class, 'index']);
+    Route::patch('/reviews/{id}/toggle-approval', [AdminReviewController::class, 'toggleApproval']);
+    Route::delete('/reviews/{id}', [AdminReviewController::class, 'destroy']);
+});

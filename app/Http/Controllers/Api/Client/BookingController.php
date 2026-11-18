@@ -47,6 +47,8 @@ class BookingController extends Controller
             'end_time'             => 'required|date_format:H:i|after:start_time',
             'expected_guests'      => 'required|integer|min:1',
             'special_requirements' => 'nullable|string',
+            'amenity_ids'          => 'nullable|array',
+            'amenity_ids.*'        => 'integer|distinct',
         ], [
             'event_type.exists' => 'The selected event type is not an available category.',
             'event_date.after'  => 'Bookings must be made at least one day in advance.',
@@ -102,13 +104,18 @@ class BookingController extends Controller
         $start    = \Carbon\Carbon::createFromFormat('H:i', $validated['start_time']);
         $end      = \Carbon\Carbon::createFromFormat('H:i', $validated['end_time']);
         $hours    = (int) $start->diffInHours($end);
-        $basePrice = ($venue->price_per_head ?? 0) * $validated['expected_guests'];
-        $taxAmount   = round($basePrice * 0.05, 2);
-        $totalAmount = round($basePrice + $taxAmount, 2);
+        // ── Amenity pricing (fix/features) ──────────────────────────────────
+        // Optional amenity_ids must belong to this venue (422 otherwise); paid
+        // amenities are added to amenities_price and 5% tax applies to
+        // base + amenities. See App\Services\BookingPricing.
+        $amenities = \App\Services\BookingPricing::resolveAmenities($venue, $validated['amenity_ids'] ?? []);
+        $pricing   = \App\Services\BookingPricing::calculate($venue, (int) $validated['expected_guests'], $amenities);
+        unset($validated['amenity_ids']);
+        // ── end amenity pricing ─────────────────────────────────────────────
 
         // Conflict check + insert run atomically: the venue row is locked so two
         // concurrent requests for the same venue can't both pass the check.
-        $booking = DB::transaction(function () use ($venue, $validated, $request, $hours, $basePrice, $taxAmount, $totalAmount) {
+        $booking = DB::transaction(function () use ($venue, $validated, $request, $hours, $pricing) {
             Venue::whereKey($venue->id)->lockForUpdate()->first();
 
             if ($this->hasConflict($venue->id, $validated['event_date'], $validated['start_time'], $validated['end_time'])) {
@@ -120,11 +127,11 @@ class BookingController extends Controller
                 'client_id'      => $request->user()->id,
                 'store_id'       => $venue->store_id,
                 'duration_hours' => $hours,
-                'base_price'     => $basePrice,
-                'amenities_price'=> 0,
+                'base_price'     => $pricing['base_price'],
+                'amenities_price'=> $pricing['amenities_price'],
                 'discount_amount'=> 0,
-                'tax_amount'     => $taxAmount,
-                'total_amount'   => $totalAmount,
+                'tax_amount'     => $pricing['tax_amount'],
+                'total_amount'   => $pricing['total_amount'],
                 'status'         => 'pending',
             ]);
         });

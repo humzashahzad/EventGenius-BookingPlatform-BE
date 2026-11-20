@@ -16,15 +16,20 @@ class VenueController extends Controller
             ->whereHas('store', fn($q) => $q->where('status', 'approved'));
 
         if ($request->filled('search')) {
-            $query->where(function ($q) use ($request) {
-                $q->where('name', 'like', '%' . $request->search . '%')
-                  ->orWhere('description', 'like', '%' . $request->search . '%')
-                  ->orWhere('city', 'like', '%' . $request->search . '%');
+            // Escape LIKE wildcards so "50%" or "_" are searched literally.
+            $term = '%' . addcslashes(trim((string) $request->search), '\\%_') . '%';
+            $query->where(function ($q) use ($term) {
+                $q->where('name', 'like', $term)
+                  ->orWhere('description', 'like', $term)
+                  ->orWhere('address', 'like', $term)
+                  ->orWhere('city', 'like', $term)
+                  ->orWhere('state', 'like', $term)
+                  ->orWhereHas('store', fn($s) => $s->where('name', 'like', $term));
             });
         }
 
         if ($request->filled('city')) {
-            $query->where('city', $request->city);
+            $query->where('city', trim((string) $request->city));
         }
 
         if ($request->filled('event_type')) {
@@ -48,18 +53,33 @@ class VenueController extends Controller
             $query->where('pricing_type', $request->pricing_type);
         }
 
-        $sortBy = $request->get('sort_by', 'created_at');
-        $sortDir = $request->get('sort_dir', 'desc');
-        $allowedSorts = ['created_at', 'avg_rating', 'price_per_head', 'price_per_hour', 'price_per_day', 'price_per_event'];
-        if (in_array($sortBy, $allowedSorts)) {
-            $query->orderBy($sortBy, $sortDir === 'asc' ? 'asc' : 'desc');
-        }
-
         if ($request->boolean('featured')) {
             $query->where('is_featured', true);
         }
 
-        $venues = $query->paginate($request->get('per_page', 12));
+        $allowedSorts = ['created_at', 'avg_rating', 'price_per_head', 'price_per_hour', 'price_per_day', 'price_per_event'];
+        $sortBy = in_array($request->get('sort_by'), $allowedSorts, true) ? $request->get('sort_by') : 'created_at';
+        $priceSort = str_starts_with($sortBy, 'price_');
+        // Prices default to low-to-high, everything else to high-to-low.
+        $sortDir = in_array($request->get('sort_dir'), ['asc', 'desc'], true)
+            ? $request->get('sort_dir')
+            : ($priceSort ? 'asc' : 'desc');
+
+        if ($priceSort) {
+            // Venues without that price go last instead of first.
+            $query->orderByRaw("{$sortBy} IS NULL");
+        }
+        if ($sortBy === 'avg_rating') {
+            $query->orderBy('avg_rating', $sortDir)->orderBy('total_reviews', 'desc');
+        } else {
+            $query->orderBy($sortBy, $sortDir);
+        }
+        // Stable order so venues don't repeat or vanish between pages.
+        $query->orderBy('id', 'desc');
+
+        $perPage = (int) $request->get('per_page', 12);
+        $perPage = $perPage > 0 ? min(100, $perPage) : 12;
+        $venues = $query->paginate($perPage)->withQueryString();
 
         return response()->json(['success' => true, 'data' => $venues]);
     }

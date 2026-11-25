@@ -25,10 +25,7 @@ use Illuminate\Support\Facades\DB;
  */
 class SearchRankingController extends Controller
 {
-    private const SIGNALS = [
-        'relevance', 'quality', 'popularity', 'reliability', 'price_fit',
-        'capacity_fit', 'distance', 'engagement', 'freshness', 'personal',
-    ];
+    private const SIGNALS = SearchSettings::SIGNALS;
 
     /** GET /admin/search/settings */
     public function settings(): JsonResponse

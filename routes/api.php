@@ -157,6 +157,8 @@ Route::middleware('jwt')->group(function () {
 
 // ─── Store Profile (public view) ─────────────────────────────────────────────
 use App\Http\Controllers\Api\PublicStoreController;
+Route::get('/stores', [PublicStoreController::class, 'index'])->middleware('throttle:120,1');
+Route::get('/stores/cities', [PublicStoreController::class, 'cities'])->middleware('throttle:120,1');
 Route::get('/stores/{id}/profile', [PublicStoreController::class, 'show']);
 
 // ─── Venue Availability (public) ─────────────────────────────────────────────

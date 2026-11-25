@@ -15,13 +15,14 @@ class Booking extends Model
         'event_name', 'event_type', 'special_requirements', 'expected_guests',
         'event_date', 'start_time', 'end_time', 'duration_hours',
         'base_price', 'amenities_price', 'discount_amount', 'tax_amount', 'total_amount',
-        'status', 'cancellation_reason', 'rejection_reason', 'confirmed_at', 'cancelled_at',
+        'status', 'payment_status', 'paid_at', 'cancellation_reason', 'rejection_reason', 'confirmed_at', 'cancelled_at',
     ];
 
     protected $casts = [
         'event_date' => 'date',
         'confirmed_at' => 'datetime',
         'cancelled_at' => 'datetime',
+        'paid_at' => 'datetime',
         'base_price' => 'float',
         'amenities_price' => 'float',
         'discount_amount' => 'float',
@@ -46,7 +47,18 @@ class Booking extends Model
 
     public function payment()
     {
-        return $this->hasOne(Payment::class);
+        // Latest payment attempt (a booking may have cancelled/failed attempts)
+        return $this->hasOne(Payment::class)->latestOfMany();
+    }
+
+    public function payments()
+    {
+        return $this->hasMany(Payment::class);
+    }
+
+    public function isPaid(): bool
+    {
+        return $this->payment_status === 'paid';
     }
 
     protected static function boot()

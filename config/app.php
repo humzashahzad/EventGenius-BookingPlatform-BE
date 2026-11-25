@@ -15,6 +15,9 @@ return [
 
     'name' => env('APP_NAME', 'Laravel'),
 
+    // demo:grow — adds a batch of demo data every 10 minutes when true (see routes/console.php).
+    'demo_growth' => (bool) env('DEMO_DATA_GROWTH', false),
+
     /*
     |--------------------------------------------------------------------------
     | Application Environment

@@ -43,6 +43,10 @@ return [
             ],
             'client_options' => [
                 // Guzzle client options: https://docs.guzzlephp.org/en/stable/request-options.html
+                // Events are published synchronously during the API request, so never let an
+                // unreachable websocket server hold a request open for long.
+                'connect_timeout' => (float) env('REVERB_PUBLISH_CONNECT_TIMEOUT', 2),
+                'timeout' => (float) env('REVERB_PUBLISH_TIMEOUT', 5),
             ],
         ],
 

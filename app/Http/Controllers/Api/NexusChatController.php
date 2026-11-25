@@ -725,21 +725,21 @@ class NexusChatController extends Controller
     }
 
     /**
-     * Avoid broadcast deadlocks when API and Reverb are configured to the same host:port.
-     * In that case, synchronous broadcast calls can block the request for ~30s.
+     * Whether chat events can be pushed to the websocket server for this request.
+     *
+     * The only case to skip is PHP's single-threaded development server (`php artisan serve`)
+     * when the broadcaster points back at that same host:port: the synchronous publish would
+     * wait on the very process that is handling this request. Behind nginx/php-fpm the API host
+     * proxies /apps to Reverb, so matching host:port is the normal production setup.
      */
     private function canBroadcast(Request $request): bool
     {
-        if ((bool) env('NEXUS_FORCE_BROADCAST', false)) {
-            return true;
-        }
-
         $connection = (string) config('broadcasting.default', 'null');
         if ($connection === '' || in_array($connection, ['null', 'log'], true)) {
             return false;
         }
 
-        if (!in_array($connection, ['reverb', 'pusher'], true)) {
+        if (PHP_SAPI !== 'cli-server' || !in_array($connection, ['reverb', 'pusher'], true)) {
             return true;
         }
 

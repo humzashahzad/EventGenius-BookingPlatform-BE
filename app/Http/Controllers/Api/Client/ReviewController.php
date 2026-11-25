@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\Client;
 
 use App\Http\Controllers\Controller;
+use App\Jobs\AnalyzeReviews;
 use App\Models\Booking;
 use App\Models\Review;
 use App\Services\NotificationService;
@@ -85,6 +86,9 @@ class ReviewController extends Controller
         ]);
 
         VenueRatingService::recalculate($booking->venue_id);
+
+        // Sentiment/aspect analysis runs in the background; it never blocks or fails the submission.
+        AnalyzeReviews::dispatchSafely([$review->id]);
 
         $ownerId = $booking->venue?->store?->user_id;
         if ($ownerId) {

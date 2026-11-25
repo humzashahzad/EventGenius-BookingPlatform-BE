@@ -15,7 +15,7 @@ use Illuminate\Support\Str;
 use Throwable;
 
 /**
- * PayFast (South Africa) Payment Gateway Controller — sandbox by default.
+ * PayFast (South Africa) Payment Gateway Controller.
  *
  * Endpoints:
  *   GET  /api/client/bookings/{id}/payment-data       Build PayFast form fields + signature

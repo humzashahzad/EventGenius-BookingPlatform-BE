@@ -61,5 +61,23 @@ class AppServiceProvider extends ServiceProvider
             Limit::perMinute(3)->by('pwd:' . $email($request) . '|' . $request->ip())->response($tooMany('password reset')),
             Limit::perMinute(10)->by('pwd-ip:' . $request->ip())->response($tooMany('password reset')),
         ]);
+
+        // Ask EventGenius (chat search): per visitor per minute and per day, plus a site-wide ceiling
+        // so a burst of chat traffic can never crowd out normal browsing on this small server.
+        $chatLimited = fn (string $text) => function (Request $request, array $headers) use ($text) {
+            return response()->json([
+                'success'     => false,
+                'message'     => $text,
+                'retry_after' => (int) ($headers['Retry-After'] ?? 60),
+            ], 429, $headers);
+        };
+        RateLimiter::for('assistant', fn (Request $request) => [
+            Limit::perMinute(max(1, (int) config('assistant.per_minute', 20)))->by('assistant:' . $request->ip())
+                ->response($chatLimited("You're sending messages very quickly. Please wait a moment and try again.")),
+            Limit::perDay(max(1, (int) config('assistant.per_day', 400)))->by('assistant-day:' . $request->ip())
+                ->response($chatLimited("You've reached today's chat limit. You can still search and browse venues as usual.")),
+            Limit::perMinute(max(1, (int) config('assistant.global_per_minute', 600)))->by('assistant-all')
+                ->response($chatLimited('Lots of people are chatting right now. Please try again in a minute.')),
+        ]);
     }
 }

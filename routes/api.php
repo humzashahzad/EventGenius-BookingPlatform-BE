@@ -273,3 +273,11 @@ Route::prefix('admin/search')->middleware(['jwt', 'role:admin'])->group(function
     Route::get('/venues', [SearchRankingController::class, 'venues']);
     Route::patch('/venues/{id}/boost', [SearchRankingController::class, 'boost']);
 });
+
+// ─── Ask EventGenius: chat-style venue search (see docs/search-assistant.md) ──
+use App\Http\Controllers\Api\AssistantController;
+
+Route::middleware('throttle:assistant')->prefix('assistant')->group(function () {
+    Route::get('/start', [AssistantController::class, 'start']);
+    Route::post('/message', [AssistantController::class, 'message']);
+});

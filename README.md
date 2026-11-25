@@ -1,6 +1,6 @@
 # EventGenius Booking Platform — Backend
 
-RESTful API for the EventGenius venue booking platform (final-year project). Built with **Laravel 12**, custom JWT authentication, Laravel Reverb for real-time events and a PayFast **sandbox** integration.
+RESTful API for the EventGenius venue booking platform. Built with **Laravel 12**, custom JWT authentication, Laravel Reverb for real-time events and a PayFast payment integration.
 
 ---
 
@@ -11,7 +11,7 @@ RESTful API for the EventGenius venue booking platform (final-year project). Bui
 | Framework          | Laravel 12 (PHP 8.2+)                                             |
 | Authentication     | Custom JWT (HMAC-SHA256, `JwtMiddleware` + `RoleMiddleware`)      |
 | Real-Time          | Laravel Reverb (Pusher protocol; frontend uses Laravel Echo)      |
-| Payments           | PayFast gateway — sandbox only                                    |
+| Payments           | PayFast gateway                                    |
 | Database           | MySQL (single shared database)                                    |
 | Testing            | PHPUnit 11.5                                                      |
 
@@ -49,7 +49,7 @@ Notes on packages that are installed but **not** part of the running architectur
 - Each **approved** store has a public profile (store info, landing page content edited by the owner, active venues, stats). Non-approved stores return 404.
 
 ### Payments
-- PayFast sandbox: signed form data generation, ITN callback, manual confirmation fallback (ITN cannot reach a local/dev server)
+- PayFast: signed form data generation, ITN callback, manual confirmation fallback (ITN cannot reach a local/dev server)
 
 ### Real-Time Chat (NexusChat)
 - Private and group conversations, message edit/delete, emoji reactions, read receipts
@@ -65,7 +65,7 @@ Notes on packages that are installed but **not** part of the running architectur
 | --------------- | ----------------------------------------------------------------------------- |
 | **Admin**       | Users, store approval/suspension, venues, bookings, sessions, categories, review moderation |
 | **Store Owner** | Venue + amenity CRUD, gallery, booking confirm/reject, landing page, review replies |
-| **Client**      | Browse venues, book (with amenities), pay (sandbox), cancel, review           |
+| **Client**      | Browse venues, book (with amenities), pay, cancel, review           |
 
 ---
 
@@ -133,7 +133,7 @@ app/
 
 config/
 ├── jwt.php                  # JWT secret, TTL
-└── payfast.php              # PayFast sandbox credentials
+└── payfast.php              # PayFast credentials
 
 database/migrations/
 socket-server/               # Experimental Socket.io server (unused by the frontend)
@@ -175,10 +175,10 @@ php artisan queue:work           # if QUEUE_CONNECTION is not sync
 | ----------------------- | ------------------------------------- |
 | `JWT_SECRET`            | Secret key for JWT signing            |
 | `JWT_TTL`               | Token time-to-live in minutes         |
-| `PAYFAST_MERCHANT_ID`   | PayFast merchant ID (sandbox)         |
-| `PAYFAST_MERCHANT_KEY`  | PayFast merchant key (sandbox)        |
+| `PAYFAST_MERCHANT_ID`   | PayFast merchant ID                   |
+| `PAYFAST_MERCHANT_KEY`  | PayFast merchant key                  |
 | `PAYFAST_PASSPHRASE`    | PayFast passphrase                    |
-| `PAYFAST_SANDBOX`       | Sandbox mode (keep `true`)            |
+| `PAYFAST_SANDBOX`       | PayFast test environment switch       |
 | `REVERB_APP_ID`         | Reverb app ID                         |
 | `REVERB_APP_KEY`        | Reverb app key                        |
 | `REVERB_APP_SECRET`     | Reverb app secret                     |

@@ -164,10 +164,7 @@ use App\Http\Controllers\Api\VenueAvailabilityController;
 Route::get('/venues/{venueId}/availability', [VenueAvailabilityController::class, 'check']);
 Route::get('/venues/{venueId}/availability/month', [VenueAvailabilityController::class, 'getMonthAvailability']);
 
-// ─── PayFast Payment Gateway (SANDBOX) ──────────────────────────────────────
-// ╔══════════════════════════════════════════════════════════════════════╗
-// ║  SANDBOX MODE — Final Year Project Demo Only                       ║
-// ╚══════════════════════════════════════════════════════════════════════╝
+// ─── PayFast Payment Gateway ────────────────────────────────────────────────
 use App\Http\Controllers\Api\PayFastController;
 
 // Protected: generate PayFast payment data for a booking (client only)

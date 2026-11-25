@@ -1,17 +1,9 @@
-# Smart venue search & ranking — build contract
+# Smart venue search & ranking
 
-Shared contract for the smart search feature. Four parts are built in parallel; each
-must match the interfaces below exactly so they fit together.
+How venue search understands free-text queries, ranks results and exposes its controls.
+Backend: Laravel 12 (`app/Services/Search`); frontend: Vue 3 (`src/components/search`, admin page `/support/search`).
 
-- Backend worktree: `/var/www/fyp/wt/smart-BE` (branch `feature/smart-search`, Laravel 12, PHP 8.4)
-- Frontend worktree: `/var/www/fyp/wt/smart-FE` (branch `feature/smart-search`, Vue 3 + TS + Tailwind 3)
-- Database: the shared MySQL `event_genius`. The tables below already exist — do not add migrations.
-  Never delete or rewrite existing rows. Additive rows in `search_logs`, `search_clicks`,
-  `venue_search_stats`, `app_settings` are fine.
-- The live checkouts `/var/www/fyp/EventGenius-BookingPlatform-BE` and `-FE` (and their `dist`)
-  must not be touched. No `git commit`, `git checkout`, `git stash` or push.
-
-## Database (already migrated)
+## Database
 
 - `app_settings(key PK, value JSON, timestamps)`
 - `search_logs(id, search_id uuid, user_id?, query?, understood JSON?, filters JSON?, sort?, result_count, venue_ids JSON?, page, created_at)`
@@ -28,7 +20,7 @@ Public venues = `venues.status='active'` and store `status='approved'`.
 
 ## Backend classes (namespace `App\Services\Search`)
 
-### `SearchQueryParser` — owner: agent "parser"
+### `SearchQueryParser`
 ```php
 public function __construct(?array $vocabulary = null) // null => load from DB (cached 10 min)
 public function parse(?string $q): array
@@ -63,7 +55,7 @@ near me/nearby/close to me → near_me; new/newest/latest → new.
 Stopwords removed from terms (in, for, a, the, venue(s), place, with, near, me, under, per, head, guests …). Keep venue-type words
 (hall, marquee, lawn, banquet, rooftop, garden, ballroom …) as terms.
 
-### `SearchSettings` — owner: agent "engine"
+### `SearchSettings`
 ```php
 public static function defaults(): array
 public static function presets(): array   // ['balanced'=>[weights], 'quality_first'=>…, 'popularity'=>…, 'budget'=>…, 'nearby'=>…]
@@ -85,7 +77,7 @@ Settings shape:
 ]
 ```
 
-### `VenueRanker` — owner: agent "engine"
+### `VenueRanker`
 ```php
 public function rank(\Illuminate\Support\Collection $venues, array $parsed, array $context, ?array $settings = null): \Illuminate\Support\Collection
 ```
@@ -102,7 +94,7 @@ score = 100 × Σ(w·s)/Σ(w) + featured_boost (if featured) + search_boost × 0
 Reasons are short and human, e.g. "Top rated in Lahore", "Fits 300 guests", "Within your budget", "2.4 km away",
 "Popular — 42 bookings recently", "Matches “rooftop”", "New on EventGenius", "Like venues you booked before".
 
-### `VenueSearch` — owner: agent "engine"
+### `VenueSearch`
 ```php
 public function run(array $params, ?User $user, array $opts = []): array
 // $opts: ['log'=>bool (default true), 'explain'=>bool (default false), 'settings'=>?array (override, for admin preview)]
@@ -122,7 +114,7 @@ Logging (opts.log): insert a `search_logs` row (reuse client-passed `search_id` 
 
 ## HTTP API
 
-### `GET /api/venues` — owner: agent "engine" (modify `Client\VenueController@index` to delegate to VenueSearch)
+### `GET /api/venues` (modify `Client\VenueController@index` to delegate to VenueSearch)
 Keeps today's response shape and adds a top-level `search` key:
 ```json
 { "success": true,
@@ -131,14 +123,14 @@ Keeps today's response shape and adds a top-level `search` key:
 ```
 Existing callers (home page `featured=1`, `sort_by=avg_rating`, `per_page=100` city lists) must keep working.
 
-### `POST /api/venues/{id}/click` — owner: agent "engine" (`App\Http\Controllers\Api\SearchClickController@store`)
+### `POST /api/venues/{id}/click` (`App\Http\Controllers\Api\SearchClickController@store`)
 Body `{search_id?: uuid, position?: int}`; optional auth (resolveUser). Inserts `search_clicks`, upserts `venue_search_stats.clicks`. Returns `{success:true}`; 404 for unknown/non-public venue.
 
-### `GET /api/search/suggest?q=` — owner: agent "parser" (`App\Http\Controllers\Api\SearchSuggestController@index`)
+### `GET /api/search/suggest?q=` (`App\Http\Controllers\Api\SearchSuggestController@index`)
 `{success:true, data:{ understood: parser output, suggestions:[{type:'venue'|'city'|'category'|'query', label, value, venue_id?, city?}] (max 8) }}`.
 q shorter than 2 chars → example queries + top categories + cities.
 
-### Admin (`jwt` + `role:admin`) — owner: agent "admin" (`App\Http\Controllers\Api\Admin\SearchRankingController`)
+### Admin (`jwt` + `role:admin`) (`App\Http\Controllers\Api\Admin\SearchRankingController`)
 - `GET /api/admin/search/settings` → `{success, data:{settings, defaults, presets}}`
 - `PUT /api/admin/search/settings` body partial settings, or `{preset:"balanced"}` → `{success, data:{settings}}`
 - `POST /api/admin/search/preview` body `{q?, city?, event_type?, guests?, max_price?, lat?, lng?, as_user_id?, settings?}` → VenueSearch with `log:false, explain:true`
@@ -149,19 +141,7 @@ q shorter than 2 chars → example queries + top categories + cities.
 
 ## Frontend
 
-- Admin page — owner: agent "admin": `src/views/admin/SearchRankingView.vue`, route `/support/search` (name `support-search`,
-  meta `{ layout: 'support', requiresAuth: true, role: 'admin' }` like the other `/support/*` routes), sidebar entry "Search & Ranking" in
-  `src/components/layout/AdminSidebar.vue`. Only this agent edits `src/router/index.ts` and `AdminSidebar.vue`.
-- Public search UX — owner: agent "frontend": `src/views/public/VenuesView.vue`, the search box in `src/views/public/HomeView.vue`,
-  new components under `src/components/search/`. Only this agent edits those files.
-- Both: use `api` from `@/lib/axios`, `AppIcon` from `@/components/ui/AppIcon.vue`, existing Tailwind classes (`btn-primary`, `card`,
-  `form-input`, `badge-*`, primary/warm palettes, `dark:` variants). No new npm dependencies.
-- `npx vue-tsc --noEmit -p tsconfig.app.json` must exit 0. Build with `npx vite build --outDir <scratch dir>` (never into `dist`).
-
-## Local test servers
-- Backend: from `/var/www/fyp/wt/smart-BE` run `php artisan serve --host=127.0.0.1 --port=<yours>` in the background
-  (parser 8101, engine 8102, admin 8103, frontend 8104). Stop it when done.
-- Frontend against it: `VITE_API_BASE_URL=http://127.0.0.1:<port>/api npx vite build --outDir <scratch>` then
-  `npx vite preview --outDir <scratch> --port <port+100>`.
-- Playwright (Chromium): `import { chromium } from '/opt/shots/node_modules/playwright/index.mjs'`.
-- Test accounts are given to each agent separately (not stored in the repo).
+- Admin page: `src/views/admin/SearchRankingView.vue` and `src/components/admin/search/*`, route `/support/search`
+  (support portal, admin only), linked from the admin sidebar as "Search & Ranking".
+- Public search: `src/components/search/*` (smart search box, understood chips, match reasons), used by
+  `src/views/public/VenuesView.vue` and the home page search box.

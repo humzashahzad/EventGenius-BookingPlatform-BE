@@ -257,3 +257,20 @@ Route::prefix('admin')->middleware(['jwt', 'role:admin'])->group(function () {
     Route::patch('/reviews/{id}/toggle-approval', [AdminReviewController::class, 'toggleApproval']);
     Route::delete('/reviews/{id}', [AdminReviewController::class, 'destroy']);
 });
+
+// ─── Smart search & ranking (feature/smart-search, see docs/smart-search.md) ──
+use App\Http\Controllers\Api\SearchClickController;
+use App\Http\Controllers\Api\SearchSuggestController;
+use App\Http\Controllers\Api\Admin\SearchRankingController;
+
+Route::post('/venues/{id}/click', [SearchClickController::class, 'store'])->middleware('throttle:120,1');
+Route::get('/search/suggest', [SearchSuggestController::class, 'index'])->middleware('throttle:120,1');
+
+Route::prefix('admin/search')->middleware(['jwt', 'role:admin'])->group(function () {
+    Route::get('/settings', [SearchRankingController::class, 'settings']);
+    Route::put('/settings', [SearchRankingController::class, 'updateSettings']);
+    Route::post('/preview', [SearchRankingController::class, 'preview']);
+    Route::get('/analytics', [SearchRankingController::class, 'analytics']);
+    Route::get('/venues', [SearchRankingController::class, 'venues']);
+    Route::patch('/venues/{id}/boost', [SearchRankingController::class, 'boost']);
+});

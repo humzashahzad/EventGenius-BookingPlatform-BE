@@ -5,6 +5,9 @@ namespace App\Http\Controllers\Api\Store;
 use App\Http\Controllers\Controller;
 use App\Models\Review;
 use App\Services\NotificationService;
+use App\Services\Reviews\ReviewInsightReport;
+use App\Services\Reviews\VenueReviewAggregator;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -33,6 +36,46 @@ class ReviewController extends Controller
         return response()->json([
             'success' => true,
             'data'    => $query->latest()->paginate(min((int) $request->get('per_page', 10), 50)),
+        ]);
+    }
+
+    /**
+     * GET /store/reviews/insights — AI review insights per venue of the owner's store:
+     * summary, monthly trend and recent negative reviews still waiting for a reply.
+     */
+    public function insights(Request $request, ReviewInsightReport $report, VenueReviewAggregator $aggregator): JsonResponse
+    {
+        $store = $request->user()->store;
+        if (!$store) {
+            return response()->json(['success' => false, 'message' => 'Store not found.'], 404);
+        }
+
+        $venues = DB::table('venues')->where('store_id', $store->id)->whereNull('deleted_at')
+            ->when($request->filled('venue_id'), fn ($q) => $q->where('id', (int) $request->venue_id))
+            ->orderBy('name')->get(['id', 'name', 'city', 'avg_rating', 'total_reviews']);
+        $ids = $venues->pluck('id')->map(fn ($id) => (int) $id)->all();
+
+        $months = min(24, max(1, (int) $request->get('months', 12)));
+        $trend = $report->monthlyTrend($ids, $months);
+        $needsReply = $report->needsReply($ids);
+        $rows = DB::table('venue_review_insights')->whereIn('venue_id', $ids)->get()->keyBy('venue_id');
+        $global = $aggregator->globalMean();
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'overall' => $report->combinedSummary($ids),
+                'venues' => $venues->map(fn ($v) => [
+                    'venue_id' => (int) $v->id,
+                    'name' => $v->name,
+                    'city' => $v->city,
+                    'avg_rating' => (float) $v->avg_rating,
+                    'total_reviews' => (int) $v->total_reviews,
+                    'summary' => $aggregator->summary((int) $v->id, $rows[$v->id] ?? null, $global),
+                    'trend' => $trend[(int) $v->id] ?? [],
+                    'needs_reply' => $needsReply[(int) $v->id] ?? [],
+                ])->values(),
+            ],
         ]);
     }
 

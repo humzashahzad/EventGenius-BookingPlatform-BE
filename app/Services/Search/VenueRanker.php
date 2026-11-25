@@ -4,6 +4,7 @@ namespace App\Services\Search;
 
 use App\Models\User;
 use App\Models\Venue;
+use App\Services\Reviews\VenueReviewAggregator;
 use Carbon\Carbon;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Collection;
@@ -37,8 +38,24 @@ class VenueRanker
     ];
     private const VENUE_TYPE_PARTIAL = 0.6;
 
+    /**
+     * Review sentiment: smoothed venue sentiment (-1..1) is mapped to 0..1 over this window
+     * (-0.2 → 0, 0.9 → 1), because guest text is mostly positive and the useful spread is at the top.
+     */
+    private const SENTIMENT_FLOOR = -0.2;
+    private const SENTIMENT_CEIL = 0.9;
+    /** An aspect reason needs this many mentions and this share of them positive. */
+    private const ASPECT_REASON_MENTIONS = 3;
+    private const ASPECT_REASON_SHARE = 0.75;
+    private const ASPECT_REASONS = [
+        'food' => 'Guests love the food', 'service' => 'Praised for service', 'decor' => 'Guests love the decor',
+        'value' => 'Great value, say guests', 'cleanliness' => 'Praised for cleanliness', 'parking' => 'Easy parking, say guests',
+        'cooling' => 'Well air-conditioned, say guests', 'sound_av' => 'Praised for sound & AV', 'location' => 'Convenient location, say guests',
+        'management' => 'Well organised and on time', 'power_backup' => 'Reliable power backup, say guests',
+    ];
+
     private const INTENT_MULTIPLIERS = [
-        'top_rated' => ['quality' => 2],
+        'top_rated' => ['quality' => 2, 'sentiment' => 2],
         'popular' => ['popularity' => 2],
         'cheap' => ['price_fit' => 2],
         'near_me' => ['distance' => 2],
@@ -51,7 +68,8 @@ class VenueRanker
      * @param array|null $stats Pre-computed statistics (tests / callers that already have them). Keys:
      *   rating_mean float, bookings [venue_id => [recent, accepted, rejected, cancelled]],
      *   engagement [venue_id => [impressions, clicks]], global_ctr ?float, amenities [venue_id => string[]],
-     *   categories [slug => name], history ?[cities => [city => n], event_types => [slug => n], median_price ?float, count int]
+     *   categories [slug => name], history ?[cities => [city => n], event_types => [slug => n], median_price ?float, count int],
+     *   sentiment [venue_id => [score -1..1 (smoothed), count int (analysed reviews with text), aspects [name => [mentions, positive_share]]]]
      */
     public function __construct(private ?array $stats = null, ?CarbonInterface $now = null)
     {
@@ -75,7 +93,8 @@ class VenueRanker
 
         $stats = $this->stats ?? $this->loadStats($venues, $user, $settings, $terms !== [] || $wantedAmenities !== []);
         $stats += ['rating_mean' => 4.0, 'bookings' => [], 'engagement' => [], 'global_ctr' => null,
-                   'amenities' => [], 'categories' => [], 'history' => null];
+                   'amenities' => [], 'categories' => [], 'history' => null, 'sentiment' => []];
+        $minSentimentReviews = max(1, (int) config('review_ai.min_reviews', 3));
 
         $weights = $this->effectiveWeights($settings['weights'], $intents);
         $ctx = [
@@ -129,7 +148,7 @@ class VenueRanker
         // ── Per-venue scoring ─────────────────────────────────────────────────
         $results = $venues->map(function (Venue $v) use (
             $terms, $wantedAmenities, $stats, $weights, $ctx, $settings, $bayes, $bestInCity,
-            $recentCounts, $maxRecent, $prices, $anyFresh, $globalCtr, $history, $ages
+            $recentCounts, $maxRecent, $prices, $anyFresh, $globalCtr, $history, $ages, $minSentimentReviews
         ) {
             $signals = [];
             $reasons = []; // [strength, text]
@@ -213,6 +232,12 @@ class VenueRanker
                 $signals['personal'] = $this->personal($v, $history);
             }
 
+            // review sentiment (AI analysis of guest text); left out when there is too little text
+            $sent = $stats['sentiment'][$v->id] ?? null;
+            if ($sent && (int) ($sent['count'] ?? 0) >= $minSentimentReviews && isset($sent['score'])) {
+                $signals['sentiment'] = $this->clamp(((float) $sent['score'] - self::SENTIMENT_FLOOR) / (self::SENTIMENT_CEIL - self::SENTIMENT_FLOOR));
+            }
+
             // ── combine ───────────────────────────────────────────────────────
             $totalWeight = 0.0;
             foreach ($signals as $name => $s) {
@@ -284,6 +309,12 @@ class VenueRanker
             }
             if (($signals['engagement'] ?? 0) >= 0.65 && (int) ($stats['engagement'][$v->id]['clicks'] ?? 0) >= 5) {
                 $reasons[] = [$strength('engagement'), 'Often picked by other searchers'];
+            }
+            if (isset($signals['sentiment'])) {
+                $sentimentReason = $this->sentimentReason($sent);
+                if ($sentimentReason !== null) {
+                    $reasons[] = [$strength('sentiment', 4), $sentimentReason];
+                }
             }
             if ($v->is_featured) {
                 $reasons[] = [1.0, 'Featured venue'];
@@ -492,6 +523,36 @@ class VenueRanker
         return $sum / $wsum;
     }
 
+    /**
+     * The most-praised aspect ("Guests love the food"), only for venues guests are positive about
+     * overall and only when enough reviews say so; else "Glowing guest reviews" for very positive venues.
+     */
+    public function sentimentReason(?array $sent): ?string
+    {
+        if (!$sent || (float) ($sent['score'] ?? 0) < 0.3) {
+            return null;
+        }
+        $best = null;
+        $bestScore = 0.0;
+        foreach ((array) ($sent['aspects'] ?? []) as $name => $a) {
+            $m = (int) ($a['mentions'] ?? 0);
+            $share = (float) ($a['positive_share'] ?? 0);
+            if (!isset(self::ASPECT_REASONS[$name]) || $m < self::ASPECT_REASON_MENTIONS || $share < self::ASPECT_REASON_SHARE) {
+                continue;
+            }
+            // Positive mentions, discounted by the share that was not positive.
+            $score = $m * $share * $share;
+            if ($score > $bestScore) {
+                $bestScore = $score;
+                $best = $name;
+            }
+        }
+        if ($best !== null) {
+            return self::ASPECT_REASONS[$best];
+        }
+        return (float) $sent['score'] >= 0.6 && (int) ($sent['count'] ?? 0) >= 5 ? 'Glowing guest reviews' : null;
+    }
+
     private function effectiveWeights(array $weights, array $intents): array
     {
         foreach ($intents as $intent) {
@@ -559,6 +620,7 @@ class VenueRanker
             'amenities' => $amenities,
             'categories' => $categories,
             'history' => $settings['personalization'] && $user ? $this->loadHistory($user) : null,
+            'sentiment' => (new VenueReviewAggregator($this->now))->rankingStats($ids),
         ];
     }
 

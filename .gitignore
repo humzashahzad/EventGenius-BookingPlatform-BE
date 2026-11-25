@@ -22,3 +22,7 @@
 Homestead.json
 Homestead.yaml
 Thumbs.db
+
+# Local analyser install (ai/install.sh into the repo)
+/ai/venv
+/ai/model

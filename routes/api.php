@@ -244,6 +244,7 @@ Route::prefix('client')->middleware(['jwt', 'role:client'])->group(function () {
 
 Route::prefix('store')->middleware(['jwt', 'role:store_owner'])->group(function () {
     Route::get('/reviews', [StoreReviewController::class, 'index']);
+    Route::get('/reviews/insights', [StoreReviewController::class, 'insights']);
     Route::post('/reviews/{id}/reply', [StoreReviewController::class, 'reply']);
 
     Route::get('/venues/{id}/amenities', [StoreAmenityController::class, 'index']);
@@ -254,6 +255,7 @@ Route::prefix('store')->middleware(['jwt', 'role:store_owner'])->group(function 
 
 Route::prefix('admin')->middleware(['jwt', 'role:admin'])->group(function () {
     Route::get('/reviews', [AdminReviewController::class, 'index']);
+    Route::get('/reviews/insights', [AdminReviewController::class, 'insights']);
     Route::patch('/reviews/{id}/toggle-approval', [AdminReviewController::class, 'toggleApproval']);
     Route::delete('/reviews/{id}', [AdminReviewController::class, 'destroy']);
 });

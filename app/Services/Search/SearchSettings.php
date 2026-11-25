@@ -17,7 +17,7 @@ class SearchSettings
 
     public const SIGNALS = [
         'relevance', 'quality', 'popularity', 'reliability', 'price_fit',
-        'capacity_fit', 'distance', 'engagement', 'freshness', 'personal',
+        'capacity_fit', 'distance', 'engagement', 'freshness', 'personal', 'sentiment',
     ];
 
     public static function defaults(): array
@@ -26,6 +26,7 @@ class SearchSettings
             'weights' => [
                 'relevance' => 8, 'quality' => 7, 'popularity' => 5, 'reliability' => 3, 'price_fit' => 5,
                 'capacity_fit' => 5, 'distance' => 5, 'engagement' => 3, 'freshness' => 2, 'personal' => 4,
+                'sentiment' => 5,
             ],
             'featured_boost' => 5,
             'personalization' => true,
@@ -46,15 +47,17 @@ class SearchSettings
             'balanced' => $balanced,
             'quality_first' => array_merge($balanced, [
                 'quality' => 10, 'reliability' => 6, 'popularity' => 4, 'price_fit' => 3, 'engagement' => 2,
+                'sentiment' => 8,
             ]),
             'popularity' => array_merge($balanced, [
                 'popularity' => 10, 'engagement' => 6, 'quality' => 6, 'price_fit' => 3, 'freshness' => 1,
+                'sentiment' => 4,
             ]),
             'budget' => array_merge($balanced, [
-                'price_fit' => 10, 'quality' => 5, 'popularity' => 4, 'reliability' => 3,
+                'price_fit' => 10, 'quality' => 5, 'popularity' => 4, 'reliability' => 3, 'sentiment' => 4,
             ]),
             'nearby' => array_merge($balanced, [
-                'distance' => 10, 'price_fit' => 4, 'popularity' => 4,
+                'distance' => 10, 'price_fit' => 4, 'popularity' => 4, 'sentiment' => 4,
             ]),
         ];
     }

@@ -34,4 +34,9 @@ class Review extends Model
     {
         return $this->belongsTo(Booking::class);
     }
+
+    public function insight()
+    {
+        return $this->hasOne(ReviewInsight::class);
+    }
 }

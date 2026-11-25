@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\Client;
 
 use App\Http\Controllers\Controller;
 use App\Models\Venue;
+use App\Services\Reviews\VenueReviewAggregator;
 use App\Services\Search\VenueSearch;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -36,6 +37,14 @@ class VenueController extends Controller
         ])->where('status', 'active')
           ->whereHas('store', fn($q) => $q->where('status', 'approved'))
           ->findOrFail($id);
+
+        // AI summary of guest reviews (approved, non-spam only); never breaks the venue page.
+        try {
+            $venue->setAttribute('review_summary', (new VenueReviewAggregator())->summary($venue->id));
+        } catch (\Throwable $e) {
+            report($e);
+            $venue->setAttribute('review_summary', null);
+        }
 
         return response()->json(['success' => true, 'data' => $venue]);
     }

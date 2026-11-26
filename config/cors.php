@@ -25,7 +25,7 @@ return [
 
     'allowed_headers' => ['*'],
 
-    'exposed_headers' => ['X-Auth-Token', 'X-Token-Expires-In'],
+    'exposed_headers' => ['X-Auth-Token', 'X-Token-Expires-In', 'Content-Disposition', 'X-Invoice-Number'],
 
     'max_age' => 86400,
 

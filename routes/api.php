@@ -191,6 +191,20 @@ Route::prefix('admin')
 // Public: PayFast ITN callback (NO auth — PayFast sends this server-to-server)
 Route::post('/payfast/itn', [PayFastController::class, 'itn']);
 
+// ─── Invoices (one per settled payment) ─────────────────────────────────────
+use App\Http\Controllers\Api\InvoiceController;
+
+Route::prefix('client')->middleware(['jwt', 'role:client'])->group(function () {
+    Route::get('/bookings/{id}/invoice', [InvoiceController::class, 'clientShow'])->whereNumber('id');
+    Route::get('/bookings/{id}/invoice.pdf', [InvoiceController::class, 'clientPdf'])->whereNumber('id');
+});
+Route::prefix('store')->middleware(['jwt', 'role:store_owner'])->group(function () {
+    Route::get('/bookings/{id}/invoice.pdf', [InvoiceController::class, 'storePdf'])->whereNumber('id');
+});
+Route::prefix('admin')->middleware(['jwt', 'role:admin'])->group(function () {
+    Route::get('/bookings/{id}/invoice.pdf', [InvoiceController::class, 'adminPdf'])->whereNumber('id');
+});
+
 // ─── Broadcasting Auth (JWT-compatible) ──────────────────────────────────────
 use App\Http\Controllers\Api\BroadcastAuthController;
 

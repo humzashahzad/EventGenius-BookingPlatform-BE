@@ -27,7 +27,8 @@ class VenueSearch
     public function __construct(private ?VenueRanker $ranker = null) {}
 
     /**
-     * @param array $opts ['log' => bool = true, 'explain' => bool = false, 'settings' => ?array]
+     * @param array $opts ['log' => bool = true, 'explain' => bool = false, 'settings' => ?array,
+     *                    'understood' => ?array (already-understood query, e.g. from the assistant; skips parsing `q`)]
      * @return array ['paginator' => LengthAwarePaginator, 'understood' => array, 'search_id' => ?string, 'sort' => string]
      */
     public function run(array $params, ?User $user, array $opts = []): array
@@ -38,7 +39,9 @@ class VenueSearch
 
         // ── Understand the query; explicit params override parsed values ─────
         $q = $this->str($params['q'] ?? null) ?? $this->str($params['search'] ?? null);
-        $understood = $this->parse($q);
+        $understood = is_array($opts['understood'] ?? null)
+            ? array_merge($this->parse(null), $opts['understood'])
+            : $this->parse($q);
 
         $city = $this->str($params['city'] ?? null) ?? $this->str($understood['city']);
         $eventType = $this->str($params['event_type'] ?? null) ?? $this->str($understood['event_type']);
@@ -46,6 +49,15 @@ class VenueSearch
         $maxPrice = $this->posFloat($params['max_price'] ?? null) ?? $this->posFloat($understood['max_price']);
         $minPrice = $this->posFloat($params['min_price'] ?? null) ?? $this->posFloat($understood['min_price']);
         $minCapacity = $this->posInt($params['min_capacity'] ?? null);
+        $maxCapacity = $this->posInt($params['max_capacity'] ?? null);
+        $minRating = is_numeric($params['min_rating'] ?? null) && (float) $params['min_rating'] > 0
+            ? min(5.0, (float) $params['min_rating'])
+            : null;
+        // Amenities every result must have (names as stored in venue_amenities, case-insensitive).
+        $requiredAmenities = array_values(array_unique(array_filter(array_map(
+            fn($a) => is_scalar($a) ? mb_strtolower(trim((string) $a)) : '',
+            is_array($params['amenities'] ?? null) ? array_slice($params['amenities'], 0, 10) : []
+        ))));
         $pricingType = $this->str($params['pricing_type'] ?? null);
         $featured = filter_var($params['featured'] ?? false, FILTER_VALIDATE_BOOLEAN);
         $lat = is_numeric($params['lat'] ?? null) && abs((float) $params['lat']) <= 90 ? (float) $params['lat'] : null;
@@ -81,6 +93,15 @@ class VenueSearch
         }
         if ($minCapacity !== null) {
             $query->where('capacity_max', '>=', $minCapacity);
+        }
+        if ($maxCapacity !== null) {
+            $query->where('capacity_max', '<=', $maxCapacity);
+        }
+        if ($minRating !== null) {
+            $query->where('total_reviews', '>', 0)->where('avg_rating', '>=', $minRating);
+        }
+        foreach ($requiredAmenities as $amenity) {
+            $query->whereHas('amenities', fn($a) => $a->whereRaw('LOWER(name) = ?', [$amenity]));
         }
         if ($maxPrice !== null) {
             $ceiling = $maxPrice * self::BUDGET_TOLERANCE;
@@ -161,7 +182,7 @@ class VenueSearch
         // Only real searches are logged: typed text, a filter, a location, or the venues page asking
         // to be tracked (track=1). Background lists (home featured, city look-ups) are not searches.
         $isSearch = ($q !== null && trim($q) !== '')
-            || $city || $eventType || $guests || $maxPrice || $minPrice || $lat !== null
+            || $city || $eventType || $guests || $maxPrice || $minPrice || $lat !== null || $requiredAmenities
             || filter_var($params['track'] ?? false, FILTER_VALIDATE_BOOLEAN);
         if ($log && $isSearch) {
             $searchId = is_string($params['search_id'] ?? null) && Str::isUuid($params['search_id'])
@@ -169,7 +190,8 @@ class VenueSearch
                 : (string) Str::uuid();
             $this->log($searchId, $user, $q, $understood, [
                 'city' => $city, 'event_type' => $eventType, 'guests' => $guests, 'max_price' => $maxPrice,
-                'min_price' => $minPrice, 'min_capacity' => $minCapacity, 'pricing_type' => $pricingType,
+                'min_price' => $minPrice, 'min_capacity' => $minCapacity, 'max_capacity' => $maxCapacity,
+                'min_rating' => $minRating, 'amenities' => $requiredAmenities ?: null, 'pricing_type' => $pricingType,
                 'featured' => $featured ?: null, 'lat' => $lat, 'lng' => $lng, 'sort_dir' => $sortDir, 'per_page' => $perPage,
             ], $sortBy, $total, $slice->map(fn($r) => $r['venue']->id)->all(), $page);
         }

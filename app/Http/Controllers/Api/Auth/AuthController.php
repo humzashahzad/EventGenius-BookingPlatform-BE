@@ -73,6 +73,8 @@ class AuthController extends Controller
         $request->validate([
             'email'    => ['required', 'email'],
             'password' => ['required'],
+            // Which sign-in page was used. Each account type signs in on its own portal.
+            'portal'   => ['nullable', 'in:customer,shop,support'],
         ]);
 
         $user = User::where('email', $request->email)->first();
@@ -87,6 +89,21 @@ class AuthController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Your account has been deactivated. Please contact support.',
+            ], 403);
+        }
+
+        // Customers, shop owners and support staff each sign in on their own portal.
+        // A sign-in from another portal's page is refused before any session is created.
+        $accountPortal = self::portalForRole($user->role);
+        if ($request->filled('portal') && $request->input('portal') !== $accountPortal) {
+            $labels = ['customer' => 'customer', 'shop' => 'shop owner', 'support' => 'support team'];
+            $portalNames = ['customer' => 'customer', 'shop' => 'shop', 'support' => 'support'];
+            return response()->json([
+                'success'        => false,
+                'code'           => 'wrong_portal',
+                'message'        => "This is a {$labels[$accountPortal]} account. Please sign in on the {$portalNames[$accountPortal]} portal.",
+                'account_portal' => $accountPortal,
+                'sign_in_url'    => self::signInUrl($accountPortal),
             ], 403);
         }
 
@@ -181,6 +198,31 @@ class AuthController extends Controller
             'success' => $status === Password::PASSWORD_RESET,
             'message' => __($status),
         ], $status === Password::PASSWORD_RESET ? 200 : 422);
+    }
+
+    // ── Helpers: portal of each account type and its sign-in address ─────────
+
+    private static function portalForRole(?string $role): string
+    {
+        return match ($role) {
+            'admin' => 'support',
+            'store_owner' => 'shop',
+            default => 'customer',
+        };
+    }
+
+    /** https://shop.eventgenius.m-dev.me/sign-in on the real domain, /shop/sign-in elsewhere. */
+    private static function signInUrl(string $portal): string
+    {
+        $base = rtrim((string) config('app.frontend_url'), '/');
+        $parts = parse_url($base);
+        $host = $parts['host'] ?? '';
+        if ($host === '' || $host === 'localhost' || filter_var($host, FILTER_VALIDATE_IP)) {
+            return "{$base}/{$portal}/sign-in";
+        }
+        $scheme = $parts['scheme'] ?? 'https';
+        $port = isset($parts['port']) ? ':' . $parts['port'] : '';
+        return "{$scheme}://{$portal}.{$host}{$port}/sign-in";
     }
 
     // ── Helper: decode JWT payload without full validation ────────────────────

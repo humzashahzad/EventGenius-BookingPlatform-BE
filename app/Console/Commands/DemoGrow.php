@@ -25,9 +25,50 @@ class DemoGrow extends Command
         {--clients=3 : New demo customers to add}
         {--venue-chance=15 : Percent chance of adding a new demo venue}
         {--progress=12 : Pending/unpaid demo bookings to move forward}
+        {--store-chance=10 : Percent chance of opening a new demo store (prefers cities without one)}
+        {--stores=0 : Open this many new demo stores now (each with a first venue)}
         {--force : Run even when DEMO_DATA_GROWTH is off}';
 
     protected $description = 'Add a batch of realistic demo data (additive, demo accounts only)';
+
+    /** Pakistani cities: [province, lat, lng, local areas]. */
+    private const CITIES = [
+        'Lahore' => ['Punjab', 31.5204, 74.3587, ['Gulberg', 'DHA', 'Johar Town', 'Model Town', 'Bahria Town', 'Garden Town', 'Canal Road', 'Faisal Town', 'Wapda Town', 'Cantt']],
+        'Karachi' => ['Sindh', 24.8607, 67.0011, ['Clifton', 'DHA', 'Gulshan-e-Iqbal', 'PECHS', 'North Nazimabad', 'Saddar', 'Gulistan-e-Jauhar', 'Bahadurabad', 'Malir', 'Korangi']],
+        'Islamabad' => ['Islamabad Capital Territory', 33.6844, 73.0479, ['F-7', 'F-10', 'E-11', 'G-9', 'Blue Area', 'DHA', 'Bahria Enclave', 'I-8', 'F-6', 'Pir Sohawa']],
+        'Rawalpindi' => ['Punjab', 33.5651, 73.0169, ['Saddar', 'Bahria Town', 'Satellite Town', 'Westridge', 'Chaklala', 'Commercial Market', 'Peshawar Road', 'Gulraiz']],
+        'Faisalabad' => ['Punjab', 31.4504, 73.1350, ['D Ground', 'Madina Town', 'Peoples Colony', 'Canal Road', 'Susan Road', 'Kohinoor City', 'Jinnah Colony', 'Satiana Road']],
+        'Multan' => ['Punjab', 30.1575, 71.5249, ['Bosan Road', 'Gulgasht Colony', 'Cantt', 'Shah Rukn-e-Alam', 'Wapda Town', 'Nishtar Road', 'Shujabad Road']],
+        'Peshawar' => ['Khyber Pakhtunkhwa', 34.0151, 71.5249, ['Hayatabad', 'University Road', 'Saddar', 'Tehkal', 'Ring Road', 'Warsak Road', 'Gulbahar', 'DHA']],
+        'Sialkot' => ['Punjab', 32.4945, 74.5229, ['Cantt', 'Paris Road', 'Kashmir Road', 'Defence Road', 'Model Town', 'Ugoki']],
+        'Gujranwala' => ['Punjab', 32.1877, 74.1945, ['Satellite Town', 'Model Town', 'DC Colony', 'Citi Housing', 'GT Road', 'Peoples Colony']],
+        'Hyderabad' => ['Sindh', 25.3960, 68.3578, ['Latifabad', 'Qasimabad', 'Auto Bhan Road', 'Saddar', 'Citizen Colony', 'Hirabad']],
+        'Quetta' => ['Balochistan', 30.1798, 66.9750, ['Jinnah Road', 'Satellite Town', 'Samungli Road', 'Airport Road', 'Cantt', 'Zarghoon Road']],
+        'Bahawalpur' => ['Punjab', 29.3956, 71.6836, ['Model Town', 'Satellite Town', 'Cantt', 'Baghdad Road', 'Shahdara']],
+        'Sargodha' => ['Punjab', 32.0836, 72.6711, ['Satellite Town', 'University Road', 'Faisalabad Road', 'Cantt']],
+        'Sukkur' => ['Sindh', 27.7052, 68.8574, ['Military Road', 'Barrage Road', 'Workshop Road', 'Minara Road']],
+        'Larkana' => ['Sindh', 27.5570, 68.2264, ['Station Road', 'VIP Road', 'Sachal Colony']],
+        'Abbottabad' => ['Khyber Pakhtunkhwa', 34.1688, 73.2215, ['Supply', 'Mandian', 'Jinnahabad', 'Kakul Road', 'Cantt']],
+        'Mardan' => ['Khyber Pakhtunkhwa', 34.1986, 72.0404, ['Sheikh Maltoon Town', 'Bank Road', 'Mall Road']],
+        'Mingora' => ['Khyber Pakhtunkhwa', 34.7717, 72.3602, ['Saidu Sharif', 'Fizagat', 'Makan Bagh', 'Kanju']],
+        'Gujrat' => ['Punjab', 32.5731, 74.0789, ['GT Road', 'Bhimber Road', 'Rehman Shaheed Road', 'Shadman Colony']],
+        'Sahiwal' => ['Punjab', 30.6682, 73.1114, ['Farid Town', 'Civil Lines', 'Jahaz Ground']],
+        'Rahim Yar Khan' => ['Punjab', 28.4202, 70.2952, ['Shahi Road', 'Model Town', 'Abbasia Town']],
+        'Jhelum' => ['Punjab', 32.9425, 73.7257, ['GT Road', 'Civil Lines', 'Kala Gujran']],
+        'Sheikhupura' => ['Punjab', 31.7167, 73.9850, ['Lahore Road', 'Housing Colony', 'Sargodha Road']],
+        'Okara' => ['Punjab', 30.8138, 73.4534, ['Depalpur Road', 'Satellite Town', 'Renala Road']],
+        'Dera Ghazi Khan' => ['Punjab', 30.0459, 70.6403, ['Jampur Road', 'Model Town', 'Block 13']],
+        'Kasur' => ['Punjab', 31.1187, 74.4508, ['Railway Road', 'Steel Bagh', 'Lahore Road']],
+        'Chiniot' => ['Punjab', 31.7200, 72.9783, ['Sargodha Road', 'Faisalabad Road', 'Muhalla Garh']],
+        'Murree' => ['Punjab', 33.9070, 73.3943, ['Mall Road', 'Kashmir Point', 'Bhurban']],
+        'Nawabshah' => ['Sindh', 26.2442, 68.4100, ['Housing Society', 'Mohni Bazar', 'Sakrand Road']],
+        'Mirpur Khas' => ['Sindh', 25.5276, 69.0111, ['Satellite Town', 'Umerkot Road', 'Station Road']],
+        'Muzaffarabad' => ['Azad Kashmir', 34.3700, 73.4711, ['Chattar', 'Upper Adda', 'Domel']],
+        'Mirpur' => ['Azad Kashmir', 33.1484, 73.7517, ['Allama Iqbal Road', 'Sector F-1', 'Chakswari Road']],
+        'Gilgit' => ['Gilgit-Baltistan', 35.9208, 74.3080, ['Jutial', 'Zulfiqarabad', 'Airport Road']],
+        'Skardu' => ['Gilgit-Baltistan', 35.2971, 75.6333, ['Satpara Road', 'College Road', 'Hussainabad']],
+        'Gwadar' => ['Balochistan', 25.1264, 62.3225, ['Marine Drive', 'New Town', 'Fish Harbour Road']],
+    ];
 
     private const SLOTS = [['10:00', '14:00'], ['15:00', '18:30'], ['19:00', '23:30']];
 
@@ -75,7 +116,7 @@ class DemoGrow extends Command
     private array $activeSlugs = [];
     private array $notifs = [];
     private array $touchedVenues = [];
-    private array $counts = ['clients' => 0, 'venues' => 0, 'bookings' => 0, 'payments' => 0, 'reviews' => 0, 'progressed' => 0];
+    private array $counts = ['stores' => 0, 'clients' => 0, 'venues' => 0, 'bookings' => 0, 'payments' => 0, 'reviews' => 0, 'progressed' => 0];
 
     public function handle(): int
     {
@@ -95,8 +136,24 @@ class DemoGrow extends Command
             }
 
             $this->addClients(max(0, (int) $this->option('clients')));
+
+            // New demo stores, spreading into cities that have none yet.
+            $newStores = max(0, (int) $this->option('stores'));
+            if (mt_rand(1, 100) <= (int) $this->option('store-chance')) {
+                $newStores++;
+            }
+            for ($i = 0; $i < $newStores; $i++) {
+                if ($store = $this->addStore()) {
+                    $stores[] = $store;
+                    $this->addVenue($store);
+                    if (mt_rand(1, 100) <= 50) {
+                        $this->addVenue($store);
+                    }
+                }
+            }
+
             if (mt_rand(1, 100) <= (int) $this->option('venue-chance')) {
-                $this->addVenue($stores[array_rand($stores)]);
+                $this->addVenue($this->storeNeedingVenues($stores));
             }
 
             $venues = $this->demoVenues();
@@ -114,8 +171,8 @@ class DemoGrow extends Command
         });
 
         $c = $this->counts;
-        $this->info(sprintf('[%s] demo:grow +%d clients, +%d venues, +%d bookings, +%d payments, +%d reviews, %d progressed',
-            $this->now->toDateTimeString(), $c['clients'], $c['venues'], $c['bookings'], $c['payments'], $c['reviews'], $c['progressed']));
+        $this->info(sprintf('[%s] demo:grow +%d stores, +%d clients, +%d venues, +%d bookings, +%d payments, +%d reviews, %d progressed',
+            $this->now->toDateTimeString(), $c['stores'], $c['clients'], $c['venues'], $c['bookings'], $c['payments'], $c['reviews'], $c['progressed']));
 
         return self::SUCCESS;
     }
@@ -127,7 +184,8 @@ class DemoGrow extends Command
         return DB::table('stores')->join('users', 'users.id', '=', 'stores.user_id')
             ->where('users.email', 'like', '%' . DemoDataSeeder::DEMO_DOMAIN)
             ->where('stores.status', 'approved')->whereNull('stores.deleted_at')
-            ->get(['stores.id', 'stores.name', 'stores.city', 'stores.state', 'stores.user_id'])
+            ->get(['stores.id', 'stores.name', 'stores.city', 'stores.state', 'stores.user_id',
+                'stores.latitude', 'stores.longitude', 'stores.created_at'])
             ->map(fn ($s) => (array) $s)->all();
     }
 
@@ -226,8 +284,8 @@ class DemoGrow extends Command
             return;
         }
 
-        $areas = ['Gulberg', 'DHA', 'Bahria Town', 'Model Town', 'Johar Town', 'Clifton', 'Saddar', 'Cantt', 'University Road',
-            'Canal Road', 'Garden Town', 'Satellite Town', 'Blue Area', 'Hayatabad', 'Gulshan', 'Askari', 'Faisal Town'];
+        // Real neighbourhoods of the store's city (generic ones only for cities outside the catalogue).
+        $areas = self::CITIES[$store['city']][3] ?? ['Cantt', 'Civil Lines', 'Model Town', 'Satellite Town', 'Main Boulevard', 'GT Road'];
         $area = $name = null;
         $flavours = ['', 'The ', 'Royal ', 'New ', 'Grand ', 'Al-Noor ', 'Shan-e-', 'Crystal ', 'Emerald ', 'Golden '];
         for ($try = 0; $try < 30 && !$name; $try++) {
@@ -246,8 +304,16 @@ class DemoGrow extends Command
         $open   = ['10:00', '12:00', '15:00'][mt_rand(0, 2)];
         $images = collect(self::IMAGES[$kind])->shuffle()->take(min(4, count(self::IMAGES[$kind])))->values()->all();
 
-        $anchor = DB::table('venues')->where('store_id', $store['id'])->whereNotNull('latitude')
-            ->first(['latitude', 'longitude']);
+        // Place the venue near its store, else near another venue of the store, else the city centre.
+        $anchor = (!empty($store['latitude']) && !empty($store['longitude']))
+            ? (object) ['latitude' => (float) $store['latitude'], 'longitude' => (float) $store['longitude']]
+            : (DB::table('venues')->where('store_id', $store['id'])->whereNotNull('latitude')->first(['latitude', 'longitude'])
+                ?? (isset(self::CITIES[$store['city']]) ? (object) ['latitude' => self::CITIES[$store['city']][1], 'longitude' => self::CITIES[$store['city']][2]] : null));
+        // Most venues of a store opened a while ago (so they have history); some are brand new.
+        $storeSince = isset($store['created_at']) ? Carbon::parse($store['created_at']) : $this->now->copy()->subDays(200);
+        $createdAt = mt_rand(1, 100) <= 70 && $storeSince->lt($this->now->copy()->subDays(30))
+            ? $storeSince->copy()->addDays(mt_rand(1, max(1, (int) $storeSince->diffInDays($this->now) - 20)))->setTime(mt_rand(9, 20), mt_rand(0, 59))
+            : $this->now->copy();
         $desc = [
             'wedding'   => "A {$this->adj()} venue in {$area} for weddings, mehndi and walima functions, with in-house catering, stage decor and ample parking.",
             'party'     => "A {$this->adj()} space in {$area} for birthdays, showers and family celebrations, with themed decor packages and a dedicated host.",
@@ -266,13 +332,13 @@ class DemoGrow extends Command
             'price_per_head' => $price, 'pricing_type' => 'per_head', 'dynamic_pricing' => false,
             'event_types' => json_encode($types), 'operating_start' => $open, 'operating_end' => '23:59',
             'status' => 'active', 'is_featured' => mt_rand(1, 100) <= 15,
-            'created_at' => $this->now, 'updated_at' => $this->now,
+            'created_at' => $createdAt, 'updated_at' => $createdAt,
         ]);
 
         foreach ($images as $n => $img) {
             DB::table('venue_images')->insert([
                 'venue_id' => $id, 'path' => "demo/{$img}.jpg", 'alt_text' => $name, 'is_primary' => $n === 0, 'sort_order' => $n,
-                'created_at' => $this->now, 'updated_at' => $this->now,
+                'created_at' => $createdAt, 'updated_at' => $createdAt,
             ]);
         }
 
@@ -285,11 +351,130 @@ class DemoGrow extends Command
         foreach (collect($amenities)->shuffle()->take(mt_rand(5, 8)) as [$aName, $icon, $isPaid, $aPrice]) {
             DB::table('venue_amenities')->insert([
                 'venue_id' => $id, 'name' => $aName, 'icon' => $icon, 'is_paid' => $isPaid, 'price' => $aPrice,
-                'created_at' => $this->now, 'updated_at' => $this->now,
+                'created_at' => $createdAt, 'updated_at' => $createdAt,
             ]);
         }
 
         $this->counts['venues']++;
+    }
+
+    /** Prefer stores with few venues so new cities fill up; otherwise any store. */
+    private function storeNeedingVenues(array $stores): array
+    {
+        if (mt_rand(1, 100) <= 60) {
+            $counts = DB::table('venues')->whereIn('store_id', array_column($stores, 'id'))->whereNull('deleted_at')
+                ->groupBy('store_id')->pluck(DB::raw('count(*)'), 'store_id');
+            usort($stores, fn ($a, $b) => ($counts[$a['id']] ?? 0) <=> ($counts[$b['id']] ?? 0));
+            return $stores[mt_rand(0, min(2, count($stores) - 1))];
+        }
+        return $stores[array_rand($stores)];
+    }
+
+    /** Opens an approved demo store (with owner account and public page) in a city that needs one. */
+    private function addStore(): ?array
+    {
+        $perCity = DB::table('stores')->join('users', 'users.id', '=', 'stores.user_id')
+            ->where('users.email', 'like', '%' . DemoDataSeeder::DEMO_DOMAIN)->whereNull('stores.deleted_at')
+            ->groupBy('stores.city')->pluck(DB::raw('count(*)'), 'stores.city')->all();
+        $empty = array_values(array_filter(array_keys(self::CITIES), fn ($c) => empty($perCity[$c])));
+        $open  = array_values(array_filter(array_keys(self::CITIES), fn ($c) => ($perCity[$c] ?? 0) < 3));
+        $pool = $empty ?: $open;
+        if (!$pool) {
+            return null;
+        }
+        $city = $pool[array_rand($pool)];
+        [$state, $lat, $lng, $areas] = self::CITIES[$city];
+
+        $suffixes = ['Banquets', 'Event Centre', 'Marquees', 'Celebrations', 'Venues', 'Grand Events', 'Halls', 'Event Lawns'];
+        $name = null;
+        foreach (collect($suffixes)->shuffle() as $suffix) {
+            foreach (["{$city} {$suffix}", "Royal {$city} {$suffix}", "New {$city} {$suffix}"] as $candidate) {
+                if (!DB::table('stores')->where('name', $candidate)->exists()) {
+                    $name = $candidate;
+                    break 2;
+                }
+            }
+        }
+        if (!$name) {
+            return null;
+        }
+
+        // Owner account with a unique name, email and phone.
+        $owner = null;
+        for ($try = 0; $try < 25 && !$owner; $try++) {
+            $full = self::FIRST[array_rand(self::FIRST)] . ' ' . self::LAST[array_rand(self::LAST)];
+            $email = Str::slug($full, '.') . '.owner' . DemoDataSeeder::DEMO_DOMAIN;
+            if (!DB::table('users')->where('name', $full)->orWhere('email', $email)->exists()) {
+                $owner = [$full, $email];
+            }
+        }
+        if (!$owner) {
+            return null;
+        }
+        $phone = null;
+        for ($try = 0; $try < 10 && !$phone; $try++) {
+            $candidate = ['0300', '0301', '0312', '0321', '0333', '0345'][mt_rand(0, 5)] . '-' . mt_rand(1000000, 9999999);
+            if (!DB::table('users')->where('phone', $candidate)->exists()) {
+                $phone = $candidate;
+            }
+        }
+
+        // Most stores have been on the platform for a while (so they build up bookings and reviews).
+        $since = mt_rand(1, 100) <= 75
+            ? $this->now->copy()->subDays(mt_rand(90, 420))->setTime(mt_rand(9, 20), mt_rand(0, 59))
+            : $this->now->copy();
+        $ownerId = DB::table('users')->insertGetId([
+            'name' => $owner[0], 'email' => $owner[1], 'role' => 'store_owner', 'phone' => $phone,
+            'is_active' => true, 'last_seen_at' => $this->now->copy()->subMinutes(mt_rand(5, 3000)),
+            'email_verified_at' => $since, 'password' => Hash::make(DemoDataSeeder::PASSWORD),
+            'created_at' => $since, 'updated_at' => $since,
+        ]);
+
+        $slug = Str::slug($name);
+        if (DB::table('stores')->where('slug', $slug)->exists()) {
+            $slug .= '-' . Str::lower(Str::random(4));
+        }
+        $area = $areas[array_rand($areas)];
+        $storeLat = round($lat + mt_rand(-250, 250) / 10000, 7);
+        $storeLng = round($lng + mt_rand(-250, 250) / 10000, 7);
+        $hours = collect(['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'])
+            ->mapWithKeys(fn ($d) => [$d => ['open' => $d === 'friday' ? '14:00' : '11:00', 'close' => '23:59', 'closed' => false]])->all();
+        $hero = 'demo/' . collect(self::IMAGES['wedding'])->random() . '.jpg';
+        $desc = "{$name} hosts weddings, family functions and corporate events in {$city}, with in-house catering, decor and a dedicated event coordinator.";
+
+        $storeId = DB::table('stores')->insertGetId([
+            'user_id' => $ownerId, 'name' => $name, 'slug' => $slug, 'description' => $desc,
+            'logo' => null, 'cover_image' => $hero,
+            'address' => "{$area}, {$city}", 'city' => $city, 'state' => $state, 'country' => 'Pakistan',
+            'latitude' => $storeLat, 'longitude' => $storeLng, 'phone' => $phone,
+            'email' => 'info@' . str_replace('-', '', $slug) . '.pk', 'website' => null, 'status' => 'approved',
+            'business_hours' => json_encode($hours),
+            'social_links' => json_encode(['facebook' => "https://facebook.com/{$slug}", 'instagram' => 'https://instagram.com/' . str_replace('-', '', $slug), 'twitter' => '', 'website' => '']),
+            'created_at' => $since, 'updated_at' => $since,
+        ]);
+        DB::table('store_landing_pages')->insert([
+            'store_id' => $storeId, 'hero_image' => $hero, 'tagline' => "Celebrations in {$city}, done right",
+            'about_text' => $desc . ' Our coordinators handle timings, vendors and guest flow so you can enjoy your day.',
+            'services' => json_encode([
+                ['title' => 'In-house Catering', 'description' => 'Pakistani, Chinese and continental menus prepared fresh by our own chefs.'],
+                ['title' => 'Decor & Stage', 'description' => 'Floral stages, lighting and theme decor designed to your colours.'],
+                ['title' => 'Event Coordination', 'description' => 'A dedicated coordinator for timings, vendors and guest flow.'],
+            ]),
+            'faq' => json_encode([
+                ['question' => 'How far in advance should I book?', 'answer' => 'For the wedding season (November to February) we recommend booking 2–3 months ahead.'],
+                ['question' => 'Is there a backup generator?', 'answer' => 'Yes, full generator backup so load-shedding never interrupts your event.'],
+            ]),
+            'social_links' => json_encode([]), 'testimonials' => json_encode([]),
+            'gallery' => json_encode(collect(self::IMAGES['wedding'])->shuffle()->take(4)->map(fn ($i) => "demo/{$i}.jpg")->values()->all()),
+            'created_at' => $since, 'updated_at' => $since,
+        ]);
+        $this->notify($ownerId, 'store_approved', 'Store Approved!',
+            "Congratulations! Your store \"{$name}\" has been approved. You can now list venues and accept bookings.",
+            ['store_id' => $storeId, 'store_name' => $name], $since->copy()->addHours(6));
+
+        $this->counts['stores']++;
+        return ['id' => $storeId, 'name' => $name, 'city' => $city, 'state' => $state, 'user_id' => $ownerId,
+            'latitude' => $storeLat, 'longitude' => $storeLng, 'created_at' => $since];
     }
 
     private function adj(): string

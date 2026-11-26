@@ -3,6 +3,7 @@
 namespace App\Services\Reviews;
 
 use App\Models\Review;
+use App\Services\LiveData;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -103,6 +104,9 @@ class ReviewInsightService
         if ($venueIds) {
             try {
                 $venues = $this->aggregator->recompute(array_keys($venueIds));
+                foreach (array_keys($venueIds) as $venueId) {
+                    LiveData::changed('venue', (int) $venueId, 'updated', [], ['review_insights']);
+                }
             } catch (Throwable $e) {
                 Log::warning('Venue review aggregate refresh failed: ' . $e->getMessage());
             }
@@ -116,6 +120,7 @@ class ReviewInsightService
     {
         try {
             $this->aggregator->recompute([$venueId]);
+            LiveData::changed('venue', $venueId, 'updated', [], ['review_insights']);
         } catch (Throwable $e) {
             Log::warning("Venue review aggregate refresh failed for venue {$venueId}: " . $e->getMessage());
         }

@@ -50,3 +50,9 @@ Broadcast::channel('online', function ($user) {
         'avatar' => $user->avatar,
     ];
 });
+
+// ─── Admins (data change events for every record, see docs/live-data.md) ──────
+// The public `venue.{id}` and `catalog` channels need no authorisation.
+Broadcast::channel('admins', function ($user) {
+    return $user->role === 'admin' && $user->is_active !== false;
+});

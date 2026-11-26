@@ -121,14 +121,22 @@ class JwtService
 
     public function revokeByJti(string $jti): void
     {
+        $session = UserSession::where('jti', $jti)->where('is_revoked', false)->first(['id', 'user_id']);
         UserSession::where('jti', $jti)->update(['is_revoked' => true]);
+        if ($session) {
+            LiveData::changed('session', (int) $session->id, 'updated', ['user_id' => $session->user_id], ['is_revoked']);
+        }
     }
 
     // ── Revoke all tokens for a user ─────────────────────────────────────────
 
     public function revokeAllForUser(int $userId): void
     {
+        $active = UserSession::where('user_id', $userId)->where('is_revoked', false)->pluck('id');
         UserSession::where('user_id', $userId)->update(['is_revoked' => true]);
+        foreach ($active as $sessionId) {
+            LiveData::changed('session', (int) $sessionId, 'updated', ['user_id' => $userId], ['is_revoked']);
+        }
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────

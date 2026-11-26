@@ -83,4 +83,20 @@ return [
 
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Data change events (App\Events\EntityChanged)
+    |--------------------------------------------------------------------------
+    |
+    | Small "this record changed" events pushed to the people viewing it, so
+    | open pages refresh quietly. See docs/live-data.md. "queue" is the queue
+    | name the broadcast jobs go on (empty = the default queue).
+    |
+    */
+
+    'live_data' => [
+        'enabled' => (bool) env('LIVE_DATA_ENABLED', true),
+        'queue'   => env('LIVE_DATA_QUEUE') ?: null,
+    ],
+
 ];

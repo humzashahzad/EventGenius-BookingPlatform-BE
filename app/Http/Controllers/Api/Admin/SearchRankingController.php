@@ -242,6 +242,9 @@ class SearchRankingController extends Controller
         $boost = max(-100, min(100, (int) round((float) $request->input('search_boost'))));
 
         $updated = DB::table('venues')->where('id', $id)->whereNull('deleted_at')->update(['search_boost' => $boost]);
+        if ($updated) {
+            \App\Services\LiveData::changed('venue', (int) $id, 'updated', [], ['search_boost']);
+        }
         $row = $this->venueRows()->where('v.id', $id)->first();
         if (!$row) {
             return response()->json(['success' => false, 'message' => 'Venue not found.'], 404);

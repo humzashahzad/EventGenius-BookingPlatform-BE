@@ -5,6 +5,7 @@ namespace App\Providers;
 use Illuminate\Auth\Notifications\ResetPassword;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 
@@ -15,7 +16,7 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        $this->app->singleton(\App\Services\LiveData::class);
     }
 
     /**
@@ -30,6 +31,23 @@ class AppServiceProvider extends ServiceProvider
         });
 
         $this->configureAuthRateLimits();
+        $this->registerLiveData();
+    }
+
+    /**
+     * Data change events: observe the shared records and broadcast each distinct change once at the
+     * end of the request (after the response is sent) or after each queued job.
+     */
+    private function registerLiveData(): void
+    {
+        foreach (array_keys(\App\Services\LiveData::ENTITY_BY_CLASS) as $model) {
+            $model::observe(\App\Observers\LiveDataObserver::class);
+        }
+
+        $flush = fn () => \App\Services\LiveData::flushPending();
+        $this->app->terminating($flush);
+        Queue::after($flush);
+        Queue::exceptionOccurred($flush);
     }
 
     /**

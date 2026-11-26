@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Models\Booking;
+use App\Services\LiveData;
 use App\Services\NotificationService;
 use Carbon\Carbon;
 use Illuminate\Console\Command;
@@ -51,6 +52,9 @@ class BookingsHousekeeping extends Command
                         continue;
                     }
                     $expired++;
+                    LiveData::changed('booking', $booking->id, 'updated', [
+                        'venue_id' => $booking->venue_id, 'store_id' => $booking->store_id, 'client_id' => $booking->client_id,
+                    ], ['status', 'cancellation_reason', 'cancelled_at']);
 
                     $venueName = $booking->venue?->name ?? 'the venue';
                     $date      = $booking->event_date->format('D, j M Y');
@@ -79,8 +83,14 @@ class BookingsHousekeeping extends Command
                         $completed++;
                         continue;
                     }
-                    $completed += Booking::whereKey($booking->id)->where('status', 'confirmed')
+                    $done = Booking::whereKey($booking->id)->where('status', 'confirmed')
                         ->update(['status' => 'completed']);
+                    $completed += $done;
+                    if ($done) {
+                        LiveData::changed('booking', $booking->id, 'updated', [
+                            'venue_id' => $booking->venue_id, 'store_id' => $booking->store_id, 'client_id' => $booking->client_id,
+                        ], ['status']);
+                    }
                 }
             });
 

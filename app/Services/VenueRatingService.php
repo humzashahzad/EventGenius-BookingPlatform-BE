@@ -17,9 +17,13 @@ class VenueRatingService
         $count = (clone $query)->count();
         $avg   = $count ? round((float) (clone $query)->avg('rating'), 2) : 0;
 
-        Venue::withTrashed()->where('id', $venueId)->update([
+        $changed = Venue::withTrashed()->where('id', $venueId)->update([
             'avg_rating'    => $avg,
             'total_reviews' => $count,
         ]);
+
+        if ($changed) {
+            LiveData::changed('venue', $venueId, 'updated', [], ['avg_rating', 'total_reviews']);
+        }
     }
 }
